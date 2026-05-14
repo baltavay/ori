@@ -1,0 +1,8 @@
+name: ori
+version: 0.1.0
+
+authors:
+  - baltavay
+
+description: A component-based TUI framework for Crystal
+license: MIT
