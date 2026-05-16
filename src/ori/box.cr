@@ -43,7 +43,7 @@ class Ori::Box < Ori::Node
   end
 
   def focusable? : Bool
-    @style.focusable || @style.scrollable
+    @style.focusable
   end
 
   def on_key(key : Ori::Key) : Bool

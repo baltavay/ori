@@ -102,19 +102,24 @@ class Ori::Screen
   def flush(io : IO) : Nil
     buf = IO::Memory.new
     w = @w
-    h = @h
     size = @back.size
     i = 0
     while i < size
-      y = i // w
-      x = i - y * w
-      buf << "\e[#{y + 1};#{x + 1}H" if x == 0
-      @back[i].write_ansi(buf)
-      @front[i] = @back[i]
+      back = @back[i]
+      front = @front[i]
+      unless back == front
+        y = i // w
+        x = i - y * w
+        buf << "\e[#{y + 1};#{x + 1}H"
+        back.write_ansi(buf)
+        @front[i] = back
+      end
       i += 1
     end
-    buf << "\e[0m"
-    io.write(buf.to_slice)
-    io.flush
+    if buf.size > 0
+      buf << "\e[0m"
+      io.write(buf.to_slice)
+      io.flush
+    end
   end
 end

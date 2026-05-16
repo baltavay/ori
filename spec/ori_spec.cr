@@ -1064,14 +1064,14 @@ end
 
 describe "scrollable box" do
 
-  it "is focusable when scrollable" do
+  it "is not focusable when only scrollable" do
     b = Ori::Box.new([] of Ori::Node, style: Ori::S.new(scrollable: true))
-    b.focusable?.should be_true
+    b.focusable?.should be_false
   end
 
-  it "is not focusable when not scrollable" do
-    b = Ori::Box.new([] of Ori::Node, style: Ori::S.new)
-    b.focusable?.should be_false
+  it "is focusable when explicitly set" do
+    b = Ori::Box.new([] of Ori::Node, style: Ori::S.new(focusable: true))
+    b.focusable?.should be_true
   end
 
   it "scrolls down with j" do
@@ -1947,7 +1947,7 @@ describe "Ori::Screen extended" do
     io.to_s.should contain("H")
   end
 
-  it "flush writes all cells every frame" do
+  it "flush skips unchanged cells" do
     s = Ori::Screen.new(5, 1)
     io1 = IO::Memory.new
     s.put(0, 0, 'H')
@@ -1955,7 +1955,7 @@ describe "Ori::Screen extended" do
     io1.to_s.should contain("H")
     io2 = IO::Memory.new
     s.flush(io2)
-    io2.to_s.size.should eq(io1.to_s.size)
+    io2.to_s.size.should eq(0)
   end
 
   it "nested clips restrict writes" do
