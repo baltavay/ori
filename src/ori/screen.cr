@@ -46,9 +46,8 @@ class Ori::Screen
     @clip_stack = [] of Tuple(Int32, Int32, Int32, Int32)
   end
 
-  def resize(w : Int32, h : Int32) : Nil
-    return if @w == w && @h == h
-    old_size = @w * @h
+  def resize?(w : Int32, h : Int32) : Bool
+    return false if @w == w && @h == h
     @w = w
     @h = h
     new_size = @w * @h
@@ -56,12 +55,28 @@ class Ori::Screen
     dummy = Cell.new('\0')
     @front = Array(Cell).new(new_size) { dummy }
     @clip_stack.clear
+    true
+  end
+
+  def resize(w : Int32, h : Int32) : Nil
+    resize?(w, h)
   end
 
   def clear : Nil
     empty = Cell.new
     @back.size.times do |i|
       @back[i] = empty
+    end
+  end
+
+  def clear_rect(x : Int32, y : Int32, w : Int32, h : Int32) : Nil
+    empty = Cell.new
+    h.times do |row|
+      w.times do |col|
+        cx, cy = x + col, y + row
+        next if cx < 0 || cx >= @w || cy < 0 || cy >= @h
+        @back[cy * @w + cx] = empty
+      end
     end
   end
 

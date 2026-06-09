@@ -14,7 +14,7 @@ class CounterApp < Ori::App
     end
   end
 
-  def handle_key(key : Ori::Key) : Bool
+  def on_key(key : Ori::Key) : Bool
     case
     when key.text == "q"                  then @running = false; true
     when key.code.up? || key.text == "k"  then @count += 1; rebuild; true

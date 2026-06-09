@@ -119,7 +119,7 @@ class ProgressBarApp < Ori::App
     @labels[5].content = "#{v.to_i}%"
   end
 
-  def handle_key(key : Ori::Key) : Bool
+  def on_key(key : Ori::Key) : Bool
     @running = false
     false
   end

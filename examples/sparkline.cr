@@ -34,7 +34,7 @@ class ChartsApp < Ori::App
     end
   end
 
-  def handle_key(key : Ori::Key) : Bool
+  def on_key(key : Ori::Key) : Bool
     if (key.ctrl && key.text == "c") || key.text == "q"
       @running = false
       return false

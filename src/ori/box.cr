@@ -245,7 +245,8 @@ class Ori::Box < Ori::Node
   end
 
   def text(content : String, **opts) : Ori::TextNode
-    t = Ori::TextNode.new(content, Ori::DSL.extract_style(**opts))
+    cursor_col = opts[:cursor_col]?.as?(Int32)
+    t = Ori::TextNode.new(content, cursor_col, Ori::DSL.extract_style(**opts))
     add(t)
     t
   end
@@ -265,7 +266,13 @@ class Ori::Box < Ori::Node
     i
   end
 
-  def area(**opts) : Ori::AreaNode
+  def area(**opts) : Ori::TextArea
+    a = Ori::DSL.make_area(**opts)
+    add(a)
+    a
+  end
+
+  def text_area(**opts) : Ori::TextArea
     a = Ori::DSL.make_area(**opts)
     add(a)
     a
@@ -335,6 +342,54 @@ class Ori::Box < Ori::Node
     sl = Ori::DSL.make_sparkline(**opts)
     add(sl)
     sl
+  end
+
+  def tabs(**opts) : Ori::Tabs
+    tb = Ori::DSL.make_tabs(**opts)
+    add(tb)
+    tb
+  end
+
+  def button(**opts) : Ori::Button
+    btn = Ori::DSL.make_button(**opts)
+    add(btn)
+    btn
+  end
+
+  def checkbox(**opts) : Ori::Checkbox
+    cb = Ori::DSL.make_checkbox(**opts)
+    add(cb)
+    cb
+  end
+
+  def tree(**opts) : Ori::Tree
+    tr = Ori::DSL.make_tree(**opts)
+    add(tr)
+    tr
+  end
+
+  def slider(**opts) : Ori::Slider
+    sl = Ori::DSL.make_slider(**opts)
+    add(sl)
+    sl
+  end
+
+  def radio(**opts) : Ori::Radio
+    r = Ori::DSL.make_radio(**opts)
+    add(r)
+    r
+  end
+
+  def radio_group(**opts) : Ori::RadioGroup
+    rg = Ori::DSL.make_radio_group(**opts)
+    add(rg)
+    rg
+  end
+
+  def toast(**opts) : Ori::Toast
+    t = Ori::DSL.make_toast(**opts)
+    add(t)
+    t
   end
 
   def help(**opts) : Ori::Help

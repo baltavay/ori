@@ -1,7 +1,12 @@
 class Ori::Renderer
   getter screen : Ori::Screen
+  getter fps : Int32 = 0
   @running : Bool = false
-  @get_tree : Proc({Ori::Box, Ori::Box?})?
+  @get_tree : Proc({Ori::Box, Ori::Box?, Bool})?
+  @cursor_visible : Bool = false
+  @last_cursor : {Int32, Int32}?
+  @frame_count : Int32 = 0
+  @fps_timer : Time::Instant = Time.instant
 
   def initialize(@output : IO = STDOUT)
     w, h = Ori::Term.window_size
@@ -14,24 +19,44 @@ class Ori::Renderer
     @output.flush
   end
 
-  def start_loop(interval : Time::Span = 16.milliseconds, &get_tree : Proc({Ori::Box, Ori::Box?})) : Nil
+  def start_loop(interval : Time::Span = 16.milliseconds, &get_tree : Proc({Ori::Box, Ori::Box?, Bool})) : Nil
     @get_tree = get_tree
     @running = true
+    @fps_timer = Time.instant
     spawn do
       while @running
+        frame_start = Time.instant
         begin
           tree = @get_tree.not_nil!.call
-          render(tree[0], tree[1])
+          render(tree[0], tree[1]) if tree[2]
+          @frame_count += 1
         rescue ex : Exception
         end
-        sleep interval
+        now = Time.instant
+        if now - @fps_timer >= 1.seconds
+          @fps = @frame_count
+          @frame_count = 0
+          @fps_timer = now
+        end
+        elapsed = Time.instant - frame_start
+        sleep_remaining = interval - elapsed
+        if sleep_remaining > 1.millisecond
+          sleep sleep_remaining
+        else
+          Fiber.yield
+        end
       end
     end
   end
 
   def render(root : Ori::Box, dialog : Ori::Box? = nil) : Nil
     w, h = Ori::Term.window_size
-    @screen.resize(w, h)
+    resized = @screen.resize?(w, h)
+    if resized
+      @output << Ori::Term.hide_cursor
+      @cursor_visible = false
+      @last_cursor = nil
+    end
     @screen.clear
     begin
       if d = dialog
@@ -45,15 +70,41 @@ class Ori::Renderer
       @screen.clear
       @screen.write(0, 0, "render error: #{ex.message}", fg: "#f38ba8")
     end
-    @screen.flush(@output)
     target = dialog || root
-    if pos = find_cursor(target)
-      @output << Ori::Term.cursor_at(pos[0], pos[1])
-    else
+    flush_and_cursor(target)
+  rescue IO::Error
+  end
+
+  def render_node(node : Ori::Node) : Nil
+    w, h = Ori::Term.window_size
+    resized = @screen.resize?(w, h)
+    if resized
       @output << Ori::Term.hide_cursor
+      @cursor_visible = false
+      @last_cursor = nil
+    end
+    r = node.rect
+    @screen.clear_rect(r.x, r.y, r.w, r.h)
+    node.render_screen(@screen)
+    flush_and_cursor(node)
+  rescue IO::Error
+  end
+
+  private def flush_and_cursor(cursor_root : Ori::Node) : Nil
+    @screen.flush(@output)
+    if pos = find_cursor(cursor_root)
+      unless @cursor_visible
+        @output << Ori::Term.show_cursor
+        @cursor_visible = true
+      end
+      @output << Ori::Term.cursor_at(pos[0], pos[1])
+      @last_cursor = pos
+    elsif @cursor_visible
+      @output << Ori::Term.hide_cursor
+      @cursor_visible = false
+      @last_cursor = nil
     end
     @output.flush
-  rescue IO::Error
   end
 
   def close : Nil
@@ -74,7 +125,9 @@ class Ori::Renderer
     case node
     when Ori::InputNode
       node.cursor_position
-    when Ori::AreaNode
+    when Ori::TextArea
+      node.cursor_position
+    when Ori::TextNode
       node.cursor_position
     when Ori::Box
       node.children.each do |child|

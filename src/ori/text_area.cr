@@ -1,4 +1,4 @@
-class Ori::AreaNode < Ori::Node
+class Ori::TextArea < Ori::Node
   BORDER_OFF   = "#4A3F6B"
   BORDER_ON    = "#A78BFA"
 
@@ -12,6 +12,7 @@ class Ori::AreaNode < Ori::Node
   @char_limit : Int32
   @show_line_numbers : Bool
   @highlights : Array(Tuple(Int32, Int32, Int32))
+  @focusable : Bool = true
 
   def initialize(
     value : String = "",
@@ -52,7 +53,23 @@ class Ori::AreaNode < Ori::Node
   end
 
   def focusable? : Bool
-    true
+    @focusable
+  end
+
+  def focusable=(v : Bool)
+    @focusable = v
+  end
+
+  def cursor_row=(r : Int32) : Int32
+    @cursor_row = r.clamp(0, @lines.size - 1)
+  end
+
+  def cursor_col=(c : Int32) : Int32
+    @cursor_col = c.clamp(0, current_line.size)
+  end
+
+  def on_change=(cb : Proc(String, Int32, Int32, Nil)?) : Proc(String, Int32, Int32, Nil)?
+    @on_change = cb
   end
 
   def cursor_position : {Int32, Int32}?

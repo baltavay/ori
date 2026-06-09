@@ -52,7 +52,7 @@ class StopwatchApp < Ori::App
     end
   end
 
-  def handle_key(key : Ori::Key) : Bool
+  def on_key(key : Ori::Key) : Bool
     case key.text
     when "q"
       @running = false

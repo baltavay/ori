@@ -32,7 +32,7 @@ module Ori::Term
   end
 
   def self.cursor_at(x : Int32, y : Int32) : String
-    "\e[#{y + 1};#{x + 1}H\e[?25h"
+    "\e[#{y + 1};#{x + 1}H\e[?25h\e[1 q"
   end
 
   def self.enter_alt : String
@@ -86,5 +86,46 @@ module Ori::Term
   def self.restore(state : LibC::Termios) : Nil
     LibC.tcsetattr(0, LibC::TCSAFLUSH, pointerof(state))
   rescue Exception
+  end
+
+  def self.char_width(ch : Char) : Int32
+    cp = ch.ord
+    return 2 if 0x1100 <= cp <= 0x115F
+    return 2 if 0x2329 <= cp <= 0x232A
+    return 2 if 0x2E80 <= cp <= 0x303E
+    return 2 if 0x3040 <= cp <= 0x3345
+    return 2 if 0x33C0 <= cp <= 0x33FF
+    return 2 if 0x3400 <= cp <= 0x4DBF
+    return 2 if 0x4E00 <= cp <= 0x9FFF
+    return 2 if 0xA000 <= cp <= 0xA4CF
+    return 2 if 0xAC00 <= cp <= 0xD7A3
+    return 2 if 0xF900 <= cp <= 0xFAFF
+    return 2 if 0xFE10 <= cp <= 0xFE19
+    return 2 if 0xFE30 <= cp <= 0xFE6F
+    return 2 if 0xFF01 <= cp <= 0xFF60
+    return 2 if 0xFFE0 <= cp <= 0xFFE6
+    return 2 if 0x1F000 <= cp <= 0x1FFFD
+    return 2 if 0x20000 <= cp <= 0x2FFFD
+    return 2 if 0x30000 <= cp <= 0x3FFFD
+    return 2 if 0x1F600 <= cp <= 0x1F64F
+    return 2 if 0x1F300 <= cp <= 0x1F5FF
+    return 2 if 0x1F680 <= cp <= 0x1F6FF
+    return 2 if 0x1F900 <= cp <= 0x1F9FF
+    return 2 if 0x1FA00 <= cp <= 0x1FA6F
+    return 2 if 0x1FA70 <= cp <= 0x1FAFF
+    return 2 if 0x1FC00 <= cp <= 0x1FCFF
+    return 2 if 0x2600 <= cp <= 0x27BF
+    return 0 if 0x0300 <= cp <= 0x036F
+    return 0 if 0xFE00 <= cp <= 0xFE0F
+    return 0 if 0x1F900 <= cp <= 0x1F9FF
+    return 0 if 0xE0100 <= cp <= 0xE01EF
+    return 0 if 0x200D == cp
+    1
+  end
+
+  def self.display_width(s : String) : Int32
+    w = 0
+    s.each_char { |ch| w += char_width(ch) }
+    w
   end
 end

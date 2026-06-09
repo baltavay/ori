@@ -11,6 +11,12 @@ module Ori::DSL
     getter padding : Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32) | Nil
     getter width : Int32 | String | Nil
     getter height : Int32 | String | Nil
+    getter min_width : Int32?
+    getter max_width : Int32?
+    getter min_height : Int32?
+    getter max_height : Int32?
+    getter spacing : Int32
+    getter margin : Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32) | Nil
     getter flex : Int32
     getter direction : Symbol
     getter align : Symbol
@@ -31,6 +37,12 @@ module Ori::DSL
       @padding : Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32) | Nil = nil,
       @width : Int32 | String | Nil = nil,
       @height : Int32 | String | Nil = nil,
+      @min_width : Int32? = nil,
+      @max_width : Int32? = nil,
+      @min_height : Int32? = nil,
+      @max_height : Int32? = nil,
+      @spacing : Int32 = 0,
+      @margin : Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32) | Nil = nil,
       @flex : Int32 = 0,
       @direction : Symbol = :vertical,
       @align : Symbol = :left,
@@ -69,13 +81,16 @@ module Ori::DSL
         border: @border, border_fg: @border_fg, padding: @padding,
         width: width_val, height: height_val,
         width_pct: width_pct, height_pct: height_pct,
-        flex: @flex, direction: @direction, align: @align,
-        focusable: @focusable, scrollable: @scrollable,
-        bar_style: @bar_style, gradient_to: @gradient_to,
+        min_width: @min_width, max_width: @max_width,
+        min_height: @min_height, max_height: @max_height,
+        spacing: @spacing, margin: @margin,
+        flex: @flex, direction: @direction,
+        align: @align, focusable: @focusable,
+        scrollable: @scrollable, bar_style: @bar_style,
+        gradient_to: @gradient_to,
       )
     end
   end
-
   def self.make_input(**opts) : Ori::InputNode
     bs = opts.fetch(:border, true)
     default_prefix = bs.is_a?(Symbol) ? Ori.border_chars(bs)[:prefix].to_s : "▌"
@@ -100,13 +115,15 @@ module Ori::DSL
       value: (opts[:value]? || "").as(String),
       placeholder: (opts[:placeholder]? || "").as(String),
       prefix: (opts[:prefix]? || default_prefix).as(String),
+      cursor: opts[:cursor]?.as?(Int32),
       on_change: opts[:on_change]?.as?(Proc(String, Nil)),
       on_submit: opts[:on_submit]?.as?(Proc(Nil)),
+      on_cursor: opts[:on_cursor]?.as?(Proc(Int32, Nil)),
       style: style,
     )
   end
 
-  def self.make_area(**opts) : Ori::AreaNode
+  def self.make_area(**opts) : Ori::TextArea
     style = Ori::DSL::StyleArgs.new(
       fg: opts[:fg]?.as?(String),
       bg: opts[:bg]?.as?(String),
@@ -124,7 +141,7 @@ module Ori::DSL
       align: (opts[:align]? || :left).as(Symbol),
       focusable: (opts[:focusable]? || false).as(Bool),
     ).to_s
-    Ori::AreaNode.new(
+    Ori::TextArea.new(
       value: (opts[:value]? || "").as(String),
       on_change: opts[:on_change]?.as?(Proc(String, Int32, Int32, Nil)),
       on_cursor: opts[:on_cursor]?.as?(Proc(Int32, Int32, Nil)),
@@ -137,6 +154,10 @@ module Ori::DSL
     )
   end
 
+  def self.make_text_area(**opts) : Ori::TextArea
+    Ori::DSL.make_area(**opts)
+  end
+
   def box(**opts, &block) : Ori::Box
     children = [] of Ori::Node
     style = Ori::DSL.extract_style(**opts)
@@ -146,14 +167,19 @@ module Ori::DSL
   end
 
   def text(content : String, **opts) : Ori::TextNode
-    Ori::TextNode.new(content, Ori::DSL.extract_style(**opts))
+    cursor_col = opts[:cursor_col]?.as?(Int32)
+    Ori::TextNode.new(content, cursor_col, Ori::DSL.extract_style(**opts))
   end
 
   def input(**opts) : Ori::InputNode
     Ori::DSL.make_input(**opts)
   end
 
-  def area(**opts) : Ori::AreaNode
+  def area(**opts) : Ori::TextArea
+    Ori::DSL.make_area(**opts)
+  end
+
+  def text_area(**opts) : Ori::TextArea
     Ori::DSL.make_area(**opts)
   end
 
@@ -335,6 +361,78 @@ module Ori::DSL
     )
   end
 
+  def self.make_tabs(**opts) : Ori::Tabs
+    Ori::Tabs.new(
+      tabs: opts[:tabs]?.try(&.as(Array(String))) || [] of String,
+      active: opts[:active]?.try(&.as(Int32)) || 0,
+      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_button(**opts) : Ori::Button
+    Ori::Button.new(
+      label: (opts[:label]? || "Button").as(String),
+      variant: (opts[:variant]? || :default).as(Symbol),
+      on_press: opts[:on_press]?.try(&.as(Proc(Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_checkbox(**opts) : Ori::Checkbox
+    Ori::Checkbox.new(
+      label: (opts[:label]? || "").as(String),
+      checked: (opts[:checked]? || false).as(Bool),
+      on_change: opts[:on_change]?.try(&.as(Proc(Bool, Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_tree(**opts) : Ori::Tree
+    Ori::Tree.new(
+      root: opts[:root]?.try(&.as(Ori::Tree::Node)),
+      on_select: opts[:on_select]?.try(&.as(Proc(String, Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_slider(**opts) : Ori::Slider
+    Ori::Slider.new(
+      min: (opts[:min]? || 0.0).as(Float64),
+      max: (opts[:max]? || 100.0).as(Float64),
+      value: (opts[:value]? || 0.0).as(Float64),
+      step: (opts[:step]? || 1.0).as(Float64),
+      on_change: opts[:on_change]?.try(&.as(Proc(Float64, Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_radio(**opts) : Ori::Radio
+    Ori::Radio.new(
+      label: (opts[:label]? || "").as(String),
+      selected: (opts[:selected]? || false).as(Bool),
+      on_change: opts[:on_change]?.try(&.as(Proc(Bool, Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_radio_group(**opts) : Ori::RadioGroup
+    Ori::RadioGroup.new(
+      labels: opts[:labels]?.try(&.as(Array(String))) || [] of String,
+      selected: (opts[:selected]? || 0).as(Int32),
+      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
+  def self.make_toast(**opts) : Ori::Toast
+    Ori::Toast.new(
+      message: (opts[:message]? || "").as(String),
+      variant: (opts[:variant]? || :info).as(Symbol),
+      style: Ori::DSL.extract_style(**opts),
+    )
+  end
+
   def self.make_help(**opts) : Ori::Help
     Ori::Help.new(
       bindings: opts[:bindings]?.try(&.as(Array(Ori::HelpBinding))) || [] of Ori::HelpBinding,
@@ -360,6 +458,12 @@ module Ori::DSL
       padding: opts[:padding]?.as?(Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32)),
       width: opts[:width]?.as?(Int32 | String),
       height: opts[:height]?.as?(Int32 | String),
+      min_width: opts[:min_width]?.as?(Int32),
+      max_width: opts[:max_width]?.as?(Int32),
+      min_height: opts[:min_height]?.as?(Int32),
+      max_height: opts[:max_height]?.as?(Int32),
+      spacing: (opts[:spacing]? || 0).as(Int32),
+      margin: opts[:margin]?.as?(Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32)),
       flex: (opts[:flex]? || 0).as(Int32),
       direction: (opts[:direction]? || :vertical).as(Symbol),
       align: (opts[:align]? || :left).as(Symbol),
@@ -409,6 +513,38 @@ module Ori::DSL
 
   def sparkline(**opts) : Ori::Sparkline
     Ori::DSL.make_sparkline(**opts)
+  end
+
+  def tabs(**opts) : Ori::Tabs
+    Ori::DSL.make_tabs(**opts)
+  end
+
+  def button(**opts) : Ori::Button
+    Ori::DSL.make_button(**opts)
+  end
+
+  def checkbox(**opts) : Ori::Checkbox
+    Ori::DSL.make_checkbox(**opts)
+  end
+
+  def tree(**opts) : Ori::Tree
+    Ori::DSL.make_tree(**opts)
+  end
+
+  def slider(**opts) : Ori::Slider
+    Ori::DSL.make_slider(**opts)
+  end
+
+  def radio(**opts) : Ori::Radio
+    Ori::DSL.make_radio(**opts)
+  end
+
+  def radio_group(**opts) : Ori::RadioGroup
+    Ori::DSL.make_radio_group(**opts)
+  end
+
+  def toast(**opts) : Ori::Toast
+    Ori::DSL.make_toast(**opts)
   end
 
   def help(**opts) : Ori::Help

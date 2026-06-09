@@ -1,12 +1,32 @@
 class Ori::TextNode < Ori::Node
   getter content : String
+  getter cursor_col : Int32?
 
   def content=(c : String)
     @content = c
   end
 
-  def initialize(@content : String, style : Ori::S = Ori::S.none)
-    super(style)
+  def initialize(@content : String, cursor_or_style : Int32? | Ori::S = nil, style : Ori::S? = nil)
+    case cursor_or_style
+    when Ori::S
+      @cursor_col = nil
+      super(cursor_or_style)
+    else
+      @cursor_col = cursor_or_style
+      super(style || Ori::S.none)
+    end
+  end
+
+  def cursor_position : {Int32, Int32}?
+    return nil unless cc = @cursor_col
+    col = 0
+    first_line = lines[0]? || ""
+    first_line.each_char do |ch|
+      break if col >= cc
+      w = Ori::Term.char_width(ch)
+      col += w if w > 0
+    end
+    {@rect.x + col, @rect.y}
   end
 
   def content_height : Int32
@@ -14,7 +34,7 @@ class Ori::TextNode < Ori::Node
   end
 
   def content_width : Int32
-    lines.map(&.size).max
+    lines.map { |l| Ori::Term.display_width(l) }.max
   end
 
   def render_screen(screen : Ori::Screen) : Nil
@@ -28,8 +48,16 @@ class Ori::TextNode < Ori::Node
         if ch == '\e'
           next
         end
+        w = Ori::Term.char_width(ch)
+        next if w == 0
+        if cx + w > inner.x + inner.w
+          break
+        end
         screen.put(cx, inner.y + i, ch, fg: @style.fg, bg: effective_bg, bold: @style.bold, dim: @style.dim)
-        cx += 1
+        (1...w).each do |offset|
+          screen.put(cx + offset, inner.y + i, '\0', fg: @style.fg, bg: effective_bg, bold: @style.bold, dim: @style.dim)
+        end
+        cx += w
       end
     end
   end
@@ -51,13 +79,17 @@ class Ori::TextNode < Ori::Node
   private def align_line(text : String, width : Int32) : String
     case @style.align
     when :center
-      pad = {width - plain_size(text), 0}.max
+      pad = {width - Ori::Term.display_width(text), 0}.max
       left = pad // 2
       (" " * left) + text + (" " * (pad - left))
     when :right
-      text.rjust(width)
+      dw = Ori::Term.display_width(text)
+      pad = {width - dw, 0}.max
+      (" " * pad) + text
     else
-      text.ljust(width)
+      dw = Ori::Term.display_width(text)
+      pad = {width - dw, 0}.max
+      text + (" " * pad)
     end
   end
 
@@ -72,7 +104,4 @@ class Ori::TextNode < Ori::Node
     t
   end
 
-  private def plain_size(text : String) : Int32
-    text.gsub(/\e\[[^m]*m/, "").size
-  end
 end

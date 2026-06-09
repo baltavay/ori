@@ -9,18 +9,21 @@ class Ori::InputNode < Ori::Node
   @prefix : String
   @on_change : Proc(String, Nil)?
   @on_submit : Proc(Nil)?
+  @on_cursor : Proc(Int32, Nil)?
 
   def initialize(
     value : String = "",
     @placeholder : String = "",
     prefix : String = "▌",
+    cursor : Int32? = nil,
     @on_change : Proc(String, Nil)? = nil,
     @on_submit : Proc(Nil)? = nil,
+    @on_cursor : Proc(Int32, Nil)? = nil,
     style : Ori::S = Ori::S.none
   )
     super(style)
     @value = value
-    @cursor = value.size
+    @cursor = cursor || value.size
     @scroll = 0
     @prefix = prefix
   end
@@ -98,7 +101,7 @@ class Ori::InputNode < Ori::Node
       if @cursor > 0
         @value = @value[0...@cursor - 1] + @value[@cursor..]
         @cursor -= 1
-        @on_change.try(&.call(@value))
+        @on_change.try(&.call(@value)); @on_cursor.try(&.call(@cursor))
       end
       true
     when .delete?
@@ -108,22 +111,22 @@ class Ori::InputNode < Ori::Node
       end
       true
     when .left?
-      @cursor -= 1 if @cursor > 0
+      if @cursor > 0; @cursor -= 1; @on_cursor.try(&.call(@cursor)) end
       true
     when .right?
-      @cursor += 1 if @cursor < @value.size
+      if @cursor < @value.size; @cursor += 1; @on_cursor.try(&.call(@cursor)) end
       true
     when .home?
-      @cursor = 0
+      if @cursor != 0; @cursor = 0; @on_cursor.try(&.call(@cursor)) end
       true
     when .end?
-      @cursor = @value.size
+      if @cursor != @value.size; @cursor = @value.size; @on_cursor.try(&.call(@cursor)) end
       true
     else
       if key.printable?
         @value = @value[0...@cursor] + key.text + @value[@cursor..]
         @cursor += 1
-        @on_change.try(&.call(@value))
+        @on_change.try(&.call(@value)); @on_cursor.try(&.call(@cursor))
         true
       else
         false

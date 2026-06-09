@@ -6,8 +6,12 @@ class Ori::FocusManager
     old = @index
     @nodes = collect(root)
     @index = old >= 0 && old < @nodes.size ? old : (@nodes.empty? ? -1 : 0)
-    @nodes.each(&.focused = false)
+    unfocus_all(root)
     @nodes[@index]?.try(&.focused = true) if @index >= 0
+  end
+
+  def focused_node : Ori::Node?
+    @nodes[@index]?
   end
 
   def focus_first : Nil
@@ -57,5 +61,12 @@ class Ori::FocusManager
     end
     result << node if node.focusable?
     result
+  end
+
+  private def unfocus_all(node : Ori::Node) : Nil
+    node.focused = false
+    if node.is_a?(Ori::Box)
+      node.children.each { |c| unfocus_all(c) }
+    end
   end
 end

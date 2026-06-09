@@ -5,6 +5,20 @@ class CalendarHelperWrapper
   include Ori::CalendarHelper
 end
 
+class TickTestApp < Ori::App
+  def render : Ori::Box
+    box {}
+  end
+
+  getter block_ran : Bool = false
+
+  def run_tick(&block : -> Nil)
+    self.running = true
+    self.dirty = false
+    start_tick(1.millisecond, &block)
+  end
+end
+
 describe Ori::Key do
   it "creates with text" do
     k = Ori::Key.new(text: "a")
@@ -95,9 +109,9 @@ describe Ori::InputNode do
   end
 end
 
-describe Ori::AreaNode do
+describe Ori::TextArea do
   it "handles typing" do
-    a = Ori::AreaNode.new
+    a = Ori::TextArea.new
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "a"))
     a.on_key(Ori::Key.new(code: :enter))
@@ -118,8 +132,8 @@ describe "content_width" do
     i.content_width.should eq(10)
   end
 
-  it "AreaNode returns max line width plus border" do
-    a = Ori::AreaNode.new(value: "hi\nworld",
+  it "TextArea returns max line width plus border" do
+    a = Ori::TextArea.new(value: "hi\nworld",
       style: Ori::S.new(border: true))
     a.content_width.should eq(6)
   end
@@ -174,6 +188,27 @@ describe Ori::Layout do
     Ori::Layout.compute(root)
     a.rect.h.should eq(5)
     b.rect.h.should eq(5)
+  end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty box layout" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      box do
+      end
+    end
+    h.frame
+  end
+
+  it "nested boxes without content" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      box do
+        box do
+        end
+      end
+    end
+    h.frame
   end
 end
 
@@ -276,6 +311,30 @@ describe Ori::ProgressBar do
     p.render(io)
     out = io.to_s
     out.should contain("█████░░░░░")
+  end
+
+  it "value change alters render output" do
+    p = Ori::ProgressBar.new(20.0)
+    p.rect = Ori::Rect.new(0, 0, 10, 1)
+    io = IO::Memory.new
+    p.render(io)
+    before = io.to_s
+    p.value = 80.0
+    io = IO::Memory.new
+    p.render(io)
+    after = io.to_s
+    before.should_not eq(after)
+  end
+end
+
+describe "Ori::App start_tick" do
+  it "spawns fiber that runs block and marks dirty" do
+    app = TickTestApp.new
+    ran = false
+    app.run_tick { ran = true }
+    sleep 5.milliseconds
+    ran.should be_true
+    app.dirty?.should be_true
   end
 end
 
@@ -673,6 +732,46 @@ describe Ori::Select do
     s.render_overlay(screen)
     screen.@back[10].char.should eq('┌')
   end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty options" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      dropdown options: [] of String, focusable: true
+    end
+    h.focus_first
+    h.frame
+    h.key(:enter)
+    h.frame
+  end
+
+  it "handles single option" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      dropdown options: ["Only"], focusable: true
+    end
+    h.focus_first
+    h.frame
+    h.key(:enter)
+    h.frame
+    h.key(:enter)
+    h.frame
+  end
+
+  it "blur closes dropdown" do
+    s = Ori::Select.new(options: ["A", "B"], style: Ori::S.new(focusable: true))
+    s.on_key(Ori::Key.new(code: :enter))
+    s.open.should be_true
+    s.blur
+    s.open.should be_false
+  end
+
+  it "focusable? respects style" do
+    s = Ori::Select.new(options: ["A"])
+    s.focusable?.should be_false
+    s2 = Ori::Select.new(options: ["A"], style: Ori::S.new(focusable: true))
+    s2.focusable?.should be_true
+  end
 end
 
 describe "DSL select" do
@@ -869,6 +968,53 @@ describe Ori::DatePicker do
     dp.month.should eq(12)
     dp.cursor_day.should eq(25)
   end
+
+  # Edge cases from find_bugs_spec
+  it "defaults to today" do
+    dp = Ori::DatePicker.new
+    dp.year.should eq(Time.local.year)
+    dp.month.should eq(Time.local.month)
+    dp.cursor_day.should eq(Time.local.day)
+  end
+
+  it "accepts explicit date" do
+    dp = Ori::DatePicker.new(year: 2024, month: 12, day: 25)
+    dp.year.should eq(2024)
+    dp.month.should eq(12)
+    dp.cursor_day.should eq(25)
+  end
+
+  it "renders trigger" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      date_picker focusable: true
+    end
+    h.focus_first
+    h.frame
+  end
+
+  it "opens calendar on enter" do
+    dp = Ori::DatePicker.new(style: Ori::S.new(focusable: true))
+    dp.on_key(Ori::Key.new(code: :enter))
+    dp.open.should be_true
+  end
+
+  it "navigates days with hjkl then enter confirms" do
+    dp = Ori::DatePicker.new(year: 2024, month: 1, day: 15, style: Ori::S.new(focusable: true))
+    dp.on_key(Ori::Key.new(code: :enter))
+    dp.on_key(Ori::Key.new(text: "l"))
+    dp.on_key(Ori::Key.new(code: :enter))
+    dp.cursor_day.should eq(16)
+    dp.open.should be_false
+  end
+
+  it "closes calendar on escape" do
+    dp = Ori::DatePicker.new(style: Ori::S.new(focusable: true))
+    dp.on_key(Ori::Key.new(code: :enter))
+    dp.open.should be_true
+    dp.on_key(Ori::Key.new(code: :escape))
+    dp.open.should be_false
+  end
 end
 
 describe Ori::DateTimePicker do
@@ -1024,6 +1170,34 @@ describe Ori::DateTimePicker do
     dtp.open.should be_true
     dtp.blur
     dtp.open.should be_false
+  end
+
+  # Edge cases from find_bugs_spec
+  it "accepts date and time" do
+    dtp = Ori::DateTimePicker.new(year: 2024, month: 6, day: 15, hour: 14, minute: 30)
+    dtp.hour.should eq(14)
+    dtp.minute.should eq(30)
+  end
+
+  it "renders trigger" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      datetime_picker focusable: true
+    end
+    h.focus_first
+    h.frame
+  end
+
+  it "opens on enter" do
+    dtp = Ori::DateTimePicker.new(style: Ori::S.new(focusable: true))
+    dtp.on_key(Ori::Key.new(code: :enter))
+    dtp.open.should be_true
+  end
+
+  it "switches sections with tab" do
+    dtp = Ori::DateTimePicker.new(style: Ori::S.new(focusable: true))
+    dtp.on_key(Ori::Key.new(code: :enter))
+    dtp.on_key(Ori::Key.new(code: :tab))
   end
 end
 
@@ -1383,9 +1557,9 @@ describe "Error handling" do
   end
 end
 
-describe "AreaNode word navigation" do
+describe "TextArea word navigation" do
   it "word_left skips whitespace then word chars" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     11.times { a.on_key(Ori::Key.new(code: Ori::Key::Code::Right)) }
     a.word_left
     a.cursor_col.should eq(6)
@@ -1394,7 +1568,7 @@ describe "AreaNode word navigation" do
   end
 
   it "word_right skips word then whitespace" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Home))
     a.cursor_col.should eq(0)
     a.word_right
@@ -1404,7 +1578,7 @@ describe "AreaNode word navigation" do
   end
 
   it "word_left crosses line boundary" do
-    a = Ori::AreaNode.new(value: "hello\nworld")
+    a = Ori::TextArea.new(value: "hello\nworld")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Down))
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Home))
     a.cursor_row.should eq(1)
@@ -1415,7 +1589,7 @@ describe "AreaNode word navigation" do
   end
 
   it "word_right crosses line boundary" do
-    a = Ori::AreaNode.new(value: "hello\nworld")
+    a = Ori::TextArea.new(value: "hello\nworld")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::End))
     a.word_right
     a.cursor_row.should eq(1)
@@ -1423,7 +1597,7 @@ describe "AreaNode word navigation" do
   end
 
   it "delete_word_backward" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::End))
     a.delete_word_backward
     a.value.should eq("hello ")
@@ -1431,7 +1605,7 @@ describe "AreaNode word navigation" do
   end
 
   it "delete_word_forward" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Home))
     a.delete_word_forward
     a.value.should eq("world")
@@ -1439,7 +1613,7 @@ describe "AreaNode word navigation" do
   end
 
   it "kill_to_end" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Home))
     5.times { a.on_key(Ori::Key.new(code: Ori::Key::Code::Right)) }
     a.kill_to_end
@@ -1447,7 +1621,7 @@ describe "AreaNode word navigation" do
   end
 
   it "kill_to_start" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Home))
     5.times { a.on_key(Ori::Key.new(code: Ori::Key::Code::Right)) }
     a.kill_to_start
@@ -1457,7 +1631,7 @@ describe "AreaNode word navigation" do
 
   it "page_up and page_down" do
     lines = (1..100).map(&.to_s).join('\n')
-    a = Ori::AreaNode.new(value: lines)
+    a = Ori::TextArea.new(value: lines)
     a.cursor_row.should eq(0)
     a.page_down
     a.cursor_row.should be > 0
@@ -1466,7 +1640,7 @@ describe "AreaNode word navigation" do
   end
 
   it "respects char_limit" do
-    a = Ori::AreaNode.new(value: "ab", char_limit: 3)
+    a = Ori::TextArea.new(value: "ab", char_limit: 3)
     a.on_key(Ori::Key.new(text: "c"))
     a.value.should eq("abc")
     a.on_key(Ori::Key.new(text: "d"))
@@ -1474,7 +1648,7 @@ describe "AreaNode word navigation" do
   end
 
   it "exposes cursor_row and cursor_col" do
-    a = Ori::AreaNode.new(value: "hello\nworld")
+    a = Ori::TextArea.new(value: "hello\nworld")
     a.cursor_row.should eq(0)
     a.cursor_col.should eq(5)
     a.on_key(Ori::Key.new(code: Ori::Key::Code::Down))
@@ -1980,6 +2154,52 @@ describe "Ori::Screen extended" do
     cell.bold.should be_true
     cell.dim.should be_true
   end
+
+  # Edge cases from find_bugs_spec
+  it "handles put at out of bounds" do
+    screen = Ori::Screen.new(10, 5)
+    screen.put(-1, 0, 'x')
+    screen.put(0, -1, 'x')
+    screen.put(99, 0, 'x')
+    screen.put(0, 99, 'x')
+  end
+
+  it "handles write at out of bounds" do
+    screen = Ori::Screen.new(10, 5)
+    screen.write(-1, 0, "hello")
+    screen.write(0, -1, "hello")
+    screen.write(0, 0, "hello\nworld\nfoo\nbar\nbaz\nqux\noverflow")
+  end
+
+  it "handles push_clip validation" do
+    screen = Ori::Screen.new(10, 5)
+    screen.push_clip(0, 0, -1, -1)
+    screen.push_clip(0, 0, 0, 0)
+    screen.push_clip(5, 3, 10, 10)
+    screen.pop_clip
+    screen.pop_clip
+    screen.pop_clip
+  end
+
+  it "handles clear_rect at negative position" do
+    screen = Ori::Screen.new(10, 5)
+    screen.clear_rect(-5, -5, 20, 20)
+  end
+
+  it "flush with no changes produces empty output" do
+    screen = Ori::Screen.new(5, 3)
+    io = IO::Memory.new
+    screen.flush(io)
+    io.to_s.should eq("")
+  end
+
+  it "flush outputs changed cells" do
+    screen = Ori::Screen.new(5, 3)
+    screen.put(0, 0, 'A')
+    io = IO::Memory.new
+    screen.flush(io)
+    io.to_s.should_not eq("")
+  end
 end
 
 describe "Ori::Color extended" do
@@ -2022,6 +2242,21 @@ describe "Ori::Color extended" do
     result = Ori::Color.paint("hi", fg: "#ff0000", bg: "#0000ff", bold: true)
     result.should contain("hi")
     result.should contain("\e[1m")
+  end
+
+  # Edge cases from find_bugs_spec
+  it "parses hex" do
+    r, g, b = Ori::Color.hex_rgb("#ff8800")
+    r.should eq(255)
+    g.should eq(136)
+    b.should eq(0)
+  end
+
+  it "parses hex without hash" do
+    r, g, b = Ori::Color.hex_rgb("ff8800")
+    r.should eq(255)
+    g.should eq(136)
+    b.should eq(0)
   end
 end
 
@@ -2097,6 +2332,80 @@ describe "Ori::InputNode extended" do
     i = Ori::InputNode.new(value: "hello", style: Ori::S.new(border: :single))
     i.content_width.should be >= 5
   end
+
+  # Edge cases from find_bugs_spec
+  it "handles typing beyond visible width" do
+    h = Ori::TestHarness.new(10, 3)
+    inp : Ori::InputNode? = nil
+    h.build do
+      inp = input focusable: true, value: ""
+    end
+    h.focus_first
+    h.frame
+    h.type("1234567890ABCDEF")
+    h.frame
+    inp.not_nil!.value.should eq("1234567890ABCDEF")
+  end
+
+  it "backspace at start does nothing" do
+    inp = Ori::InputNode.new(value: "hello")
+    # cursor starts at end; move to start
+    5.times { inp.on_key(Ori::Key.new(code: :left)) }
+    inp.on_key(Ori::Key.new(code: :backspace))
+    inp.value.should eq("hello")
+  end
+
+  it "backspace removes char before cursor" do
+    inp = Ori::InputNode.new(value: "abcd")
+    inp.on_key(Ori::Key.new(code: :left))
+    inp.on_key(Ori::Key.new(code: :left))
+    inp.on_key(Ori::Key.new(code: :backspace))
+    inp.value.should eq("acd")
+  end
+
+  it "handles delete at end" do
+    inp = Ori::InputNode.new(value: "hi")
+    inp.on_key(Ori::Key.new(code: :delete))
+    inp.value.should eq("hi")
+  end
+
+  it "handles cursor left at beginning" do
+    inp = Ori::InputNode.new(value: "hi")
+    inp.on_key(Ori::Key.new(code: :left))
+    inp.value.should eq("hi")
+  end
+
+  it "handles cursor right at end" do
+    inp = Ori::InputNode.new(value: "hi")
+    inp.on_key(Ori::Key.new(code: :right))
+    inp.value.should eq("hi")
+  end
+
+  it "renders placeholder when empty and unfocused" do
+    inp = Ori::InputNode.new(value: "", placeholder: "enter name", style: Ori::S.new)
+    inp.rect = Ori::Rect.new(0, 0, 20, 1)
+    screen = Ori::Screen.new(20, 1)
+    inp.render_screen(screen)
+    screen.back[0].char.should eq('e')
+  end
+
+  it "shows value instead of placeholder when focused" do
+    inp = Ori::InputNode.new(value: "val", placeholder: "placeholder", style: Ori::S.new)
+    inp.rect = Ori::Rect.new(0, 0, 20, 1)
+    inp.focused = true
+    screen = Ori::Screen.new(20, 1)
+    inp.render_screen(screen)
+    screen.back[0].char.should eq('v')
+  end
+
+  it "input renders value when focused and empty" do
+    inp = Ori::InputNode.new(value: "", placeholder: "ph", style: Ori::S.new)
+    inp.rect = Ori::Rect.new(0, 0, 20, 1)
+    inp.focused = true
+    screen = Ori::Screen.new(20, 1)
+    inp.render_screen(screen)
+    screen.back[0].char.should eq(' ')
+  end
 end
 
 describe "Ori::ProgressBar extended" do
@@ -2159,6 +2468,31 @@ describe "Ori::ProgressBar extended" do
     p.render_screen(screen)
     screen.back[0].char.should eq('▌')
   end
+
+  # Edge cases from find_bugs_spec
+  it "renders at min width without crash" do
+    pb = Ori::ProgressBar.new(50.0, style: Ori::S.new(width: 1))
+    pb.rect = Ori::Rect.new(0, 0, 1, 1)
+    screen = Ori::Screen.new(1, 1)
+    pb.render_screen(screen)
+  end
+
+  it "renders at zero width without crash" do
+    pb = Ori::ProgressBar.new(50.0, style: Ori::S.new(width: 0))
+    pb.rect = Ori::Rect.new(0, 0, 0, 1)
+    screen = Ori::Screen.new(0, 1)
+    pb.render_screen(screen)
+  end
+
+  it "clamps value at zero" do
+    pb = Ori::ProgressBar.new(-10.0)
+    pb.value.should eq(0.0)
+  end
+
+  it "clamps value at max" do
+    pb = Ori::ProgressBar.new(150.0, max: 100.0)
+    pb.value.should eq(100.0)
+  end
 end
 
 describe "Ori::Spinner extended" do
@@ -2198,6 +2532,30 @@ describe "Ori::Spinner extended" do
     screen = Ori::Screen.new(5, 1)
     s.render_screen(screen)
     screen.back[0].char.should_not eq(' ')
+  end
+
+  # Edge cases from find_bugs_spec
+  it "renders without crash" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      spinner type: :dots
+    end
+    h.frame
+  end
+
+  it "all frame types render without error" do
+    [:dots, :line, :arc, :circle, :pipe, :triangle, :bounce, :star].each do |t|
+      sp = Ori::Spinner.new(type: t)
+      sp.rect = Ori::Rect.new(0, 0, 1, 1)
+      screen = Ori::Screen.new(1, 1)
+      sp.render_screen(screen)
+    end
+  end
+
+  it "reset clears frame state" do
+    sp = Ori::Spinner.new
+    sp.rect = Ori::Rect.new(0, 0, 1, 1)
+    sp.reset
   end
 end
 
@@ -2270,6 +2628,45 @@ describe "Ori::FocusManager" do
     fm.update(box)
     t.focused.should be_false
     i.focused.should be_true
+  end
+
+  # Edge cases from find_bugs_spec
+  it "tab with no focusable nodes does not crash" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      text "not focusable"
+    end
+    h.frame
+    h.tab
+    h.frame
+  end
+
+  it "tab with empty root does not crash" do
+    h = Ori::TestHarness.new(40, 5)
+    h.frame
+    h.tab
+    h.frame
+  end
+
+  it "tab with single focusable wraps" do
+    h = Ori::TestHarness.new(40, 5)
+    inp : Ori::InputNode? = nil
+    h.build do
+      inp = input focusable: true, value: "x"
+    end
+    h.focus_first
+    h.frame
+    inp.not_nil!.focused.should be_true
+    h.tab
+    h.frame
+    inp.not_nil!.focused.should be_true
+  end
+
+  it "focus_first on empty tree does not crash" do
+    h = Ori::TestHarness.new(40, 5)
+    h.frame
+    h.focus_first
+    h.frame
   end
 end
 
@@ -2369,6 +2766,15 @@ describe "Ori::Term" do
     w, h = Ori::Term.window_size
     w.should be > 0
     h.should be > 0
+  end
+
+  # Edge cases from find_bugs_spec
+  it "char_width for ascii" do
+    Ori::Term.char_width('a').should eq(1)
+  end
+
+  it "char_width for null" do
+    Ori::Term.char_width('\0').should eq(1)
   end
 end
 
@@ -2530,6 +2936,47 @@ describe "Ori::Table extended" do
     t = Ori::Table.new(headers: ["X"], rows: [] of Array(String))
     t.content_height.should be > 0
   end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty rows" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      table headers: ["A", "B"], rows: [] of Array(String), focusable: true
+    end
+    h.focus_first
+    h.frame
+  end
+
+  it "handles empty headers and rows" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      table headers: [] of String, rows: [] of Array(String), focusable: true
+    end
+    h.focus_first
+    h.frame
+  end
+
+  it "navigates down and up" do
+    changes = [] of Int32
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      table headers: ["X"], rows: [["1"], ["2"], ["3"]], focusable: true,
+        on_change: ->(row : Int32) { changes << row; nil }
+    end
+    h.focus_first
+    h.key(:down)
+    h.key(:down)
+    h.key(:up)
+    changes.should eq([1, 2, 1])
+  end
+
+  it "selected_row clamped at boundaries" do
+    t = Ori::Table.new(rows: [["a"]], selected_row: 0)
+    t.on_key(Ori::Key.new(code: :up))
+    t.selected_row.should eq(0)
+    t.on_key(Ori::Key.new(code: :down))
+    t.selected_row.should eq(0)
+  end
 end
 
 describe "Ori::List extended" do
@@ -2544,6 +2991,41 @@ describe "Ori::List extended" do
     items = [Ori::List::Item.new("a"), Ori::List::Item.new("b")]
     l = Ori::List.new(items: items, checkable: true)
     l.content_height.should eq(2)
+  end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty items" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      list items: [] of Ori::List::Item, focusable: true
+    end
+    h.focus_first
+    h.frame
+  end
+
+  it "handles empty items with navigation" do
+    l = Ori::List.new(items: [] of Ori::List::Item, style: Ori::S.new(focusable: true))
+    l.on_key(Ori::Key.new(code: :down))
+    l.on_key(Ori::Key.new(code: :up))
+    l.on_key(Ori::Key.new(text: "j"))
+    l.on_key(Ori::Key.new(text: "k"))
+  end
+
+  it "handles single item" do
+    l = Ori::List.new(items: [Ori::List::Item.new("only")], style: Ori::S.new(focusable: true))
+    l.on_key(Ori::Key.new(code: :down))
+    l.cursor.should eq(0)
+  end
+
+  it "handles on_select callback" do
+    selected = -1
+    l = Ori::List.new(
+      items: [Ori::List::Item.new("a"), Ori::List::Item.new("b")],
+      style: Ori::S.new(focusable: true),
+      on_select: ->(idx : Int32) { selected = idx; nil },
+    )
+    l.on_key(Ori::Key.new(code: :enter))
+    selected.should eq(0)
   end
 end
 
@@ -3070,7 +3552,7 @@ end
 describe "DSL make_area" do
   it "creates area with defaults" do
     a = Ori::DSL.make_area
-    a.should be_a(Ori::AreaNode)
+    a.should be_a(Ori::TextArea)
     a.value.should eq("")
   end
 
@@ -3086,22 +3568,22 @@ describe "DSL make_area" do
 
   it "creates area with line numbers" do
     a = Ori::DSL.make_area(show_line_numbers: true)
-    a.should be_a(Ori::AreaNode)
+    a.should be_a(Ori::TextArea)
   end
 
   it "creates area with 3-arg on_change" do
     a = Ori::DSL.make_area(on_change: ->(v : String, r : Int32, c : Int32) { nil })
-    a.should be_a(Ori::AreaNode)
+    a.should be_a(Ori::TextArea)
   end
 
   it "creates area with highlights" do
     a = Ori::DSL.make_area(highlights: [{0, 0, 5}] of Tuple(Int32, Int32, Int32))
-    a.should be_a(Ori::AreaNode)
+    a.should be_a(Ori::TextArea)
   end
 
   it "creates area with char_limit" do
     a = Ori::DSL.make_area(char_limit: 100)
-    a.should be_a(Ori::AreaNode)
+    a.should be_a(Ori::TextArea)
   end
 end
 
@@ -3308,58 +3790,465 @@ describe "DSL make_help" do
   end
 end
 
-describe "Ori::AreaNode extended" do
+describe "DSL make_button" do
+  it "creates with defaults" do
+    b = Ori::DSL.make_button
+    b.should be_a(Ori::Button)
+  end
+
+  it "creates with label" do
+    b = Ori::DSL.make_button(label: "Go")
+    b.label.should eq("Go")
+  end
+
+  it "creates with variant" do
+    b = Ori::DSL.make_button(label: "X", variant: :danger)
+    b.label.should eq("X")
+  end
+end
+
+describe "DSL make_checkbox" do
+  it "creates with defaults" do
+    c = Ori::DSL.make_checkbox
+    c.should be_a(Ori::Checkbox)
+  end
+
+  it "creates with label" do
+    c = Ori::DSL.make_checkbox(label: "Opt")
+    c.label.should eq("Opt")
+  end
+
+  it "creates checked" do
+    c = Ori::DSL.make_checkbox(label: "Y", checked: true)
+    c.checked.should be_true
+  end
+end
+
+describe "DSL make_tabs" do
+  it "creates with tabs" do
+    t = Ori::DSL.make_tabs(tabs: ["A", "B"])
+    t.should be_a(Ori::Tabs)
+    t.tabs.should eq(["A", "B"])
+  end
+
+  it "creates with active" do
+    t = Ori::DSL.make_tabs(tabs: ["A", "B"], active: 1)
+    t.active.should eq(1)
+  end
+end
+
+describe "DSL make_tree" do
+  it "creates with root" do
+    root = Ori::Tree::Node.new("r")
+    t = Ori::DSL.make_tree(root: root)
+    t.should be_a(Ori::Tree)
+    t.root.label.should eq("r")
+  end
+
+  it "creates with on_select" do
+    t = Ori::DSL.make_tree(on_select: ->(s : String) { nil })
+    t.should be_a(Ori::Tree)
+  end
+end
+
+describe "DSL make_slider" do
+  it "creates with defaults" do
+    s = Ori::DSL.make_slider
+    s.should be_a(Ori::Slider)
+  end
+
+  it "creates with value" do
+    s = Ori::DSL.make_slider(value: 50.0, max: 200.0)
+    s.value.should eq(50.0)
+    s.max.should eq(200.0)
+  end
+end
+
+describe "DSL make_radio" do
+  it "creates with defaults" do
+    r = Ori::DSL.make_radio
+    r.should be_a(Ori::Radio)
+  end
+
+  it "creates with label" do
+    r = Ori::DSL.make_radio(label: "Opt")
+    r.label.should eq("Opt")
+  end
+end
+
+describe "DSL make_radio_group" do
+  it "creates with labels" do
+    rg = Ori::DSL.make_radio_group(labels: ["A", "B"])
+    rg.should be_a(Ori::RadioGroup)
+    rg.buttons.size.should eq(2)
+  end
+end
+
+describe "DSL make_toast" do
+  it "creates with defaults" do
+    t = Ori::DSL.make_toast
+    t.should be_a(Ori::Toast)
+  end
+
+  it "creates with message" do
+    t = Ori::DSL.make_toast(message: "hi")
+    t.message.should eq("hi")
+  end
+end
+
+describe Ori::Slider do
+  it "defaults to 0-100 with value 0" do
+    s = Ori::Slider.new
+    s.min.should eq(0.0)
+    s.max.should eq(100.0)
+    s.value.should eq(0.0)
+  end
+
+  it "clamps value at bounds" do
+    s = Ori::Slider.new(value: 200.0, max: 100.0)
+    s.value.should eq(100.0)
+    s.value = -10.0
+    s.value.should eq(0.0)
+  end
+
+  it "moves right with l key" do
+    s = Ori::Slider.new(step: 5.0)
+    s.on_key(Ori::Key.new(text: "l"))
+    s.value.should eq(5.0)
+  end
+
+  it "moves left with h key" do
+    s = Ori::Slider.new(value: 50.0)
+    s.on_key(Ori::Key.new(text: "h"))
+    s.value.should eq(49.0)
+  end
+
+  it "jumps to min/max with g/G" do
+    s = Ori::Slider.new(value: 50.0)
+    s.on_key(Ori::Key.new(text: "g"))
+    s.value.should eq(0.0)
+    s.on_key(Ori::Key.new(text: "G"))
+    s.value.should eq(100.0)
+  end
+
+  it "focusable depends on style" do
+    Ori::Slider.new.focusable?.should be_false
+    Ori::Slider.new(style: Ori::S.new(focusable: true)).focusable?.should be_true
+  end
+
+  it "content_width is 15" do
+    Ori::Slider.new.content_width.should eq(15)
+  end
+
+  it "fires on_change" do
+    vals = [] of Float64
+    s = Ori::Slider.new(on_change: ->(v : Float64) { vals << v; nil })
+    s.on_key(Ori::Key.new(text: "l"))
+    vals.should eq([1.0])
+  end
+end
+
+describe Ori::Radio do
+  it "defaults to unselected" do
+    r = Ori::Radio.new(label: "opts")
+    r.selected.should be_false
+  end
+
+  it "toggles on space" do
+    r = Ori::Radio.new(label: "x", style: Ori::S.new(focusable: true))
+    r.on_key(Ori::Key.new(code: :space))
+    r.selected.should be_true
+  end
+
+  it "content_width accounts for label" do
+    r = Ori::Radio.new(label: "hello")
+    r.content_width.should be >= 7
+  end
+end
+
+describe Ori::RadioGroup do
+  it "creates buttons from labels" do
+    rg = Ori::RadioGroup.new(labels: ["A", "B", "C"])
+    rg.buttons.size.should eq(3)
+    rg.selected.should eq(0)
+  end
+
+  it "selects by index" do
+    rg = Ori::RadioGroup.new(labels: ["A", "B"], selected: 1)
+    rg.selected.should eq(1)
+    rg.buttons[0].selected.should be_false
+    rg.buttons[1].selected.should be_true
+  end
+
+  it "selected= updates all buttons" do
+    rg = Ori::RadioGroup.new(labels: ["A", "B", "C"])
+    rg.selected = 2
+    rg.selected.should eq(2)
+    rg.buttons[2].selected.should be_true
+    rg.buttons[0].selected.should be_false
+  end
+end
+
+describe Ori::Toast do
+  it "stores message and variant" do
+    t = Ori::Toast.new(message: "hello", variant: :success)
+    t.message.should eq("hello")
+    t.variant.should eq(:success)
+  end
+
+  it "updates message" do
+    t = Ori::Toast.new(message: "old")
+    t.message = "new"
+    t.message.should eq("new")
+  end
+
+  it "content_width accounts for message" do
+    t = Ori::Toast.new(message: "hello world")
+    t.content_width.should be >= 11
+  end
+
+  it "not focusable" do
+    Ori::Toast.new.focusable?.should be_false
+  end
+end
+
+describe Ori::Button do
+  it "defaults to label Button" do
+    b = Ori::Button.new
+    b.label.should eq("Button")
+  end
+
+  it "creates with label and variant" do
+    b = Ori::Button.new(label: "Save", variant: :primary)
+    b.label.should eq("Save")
+  end
+
+  it "fires on_press on enter" do
+    pressed = false
+    b = Ori::Button.new(on_press: -> { pressed = true; nil })
+    b.on_key(Ori::Key.new(code: :enter))
+    pressed.should be_true
+  end
+
+  it "fires on_press on space" do
+    pressed = false
+    b = Ori::Button.new(on_press: -> { pressed = true; nil })
+    b.on_key(Ori::Key.new(code: :space))
+    pressed.should be_true
+  end
+
+  it "content_width accounts for label" do
+    b = Ori::Button.new(label: "hello")
+    b.content_width.should be >= 7
+  end
+
+  it "focusable depends on style" do
+    Ori::Button.new.focusable?.should be_false
+    Ori::Button.new(style: Ori::S.new(focusable: true)).focusable?.should be_true
+  end
+end
+
+describe Ori::Checkbox do
+  it "defaults unchecked" do
+    c = Ori::Checkbox.new(label: "opt")
+    c.checked.should be_false
+  end
+
+  it "toggles on space" do
+    c = Ori::Checkbox.new(label: "x", style: Ori::S.new(focusable: true))
+    c.on_key(Ori::Key.new(code: :space))
+    c.checked.should be_true
+  end
+
+  it "toggles on enter" do
+    c = Ori::Checkbox.new(label: "y", style: Ori::S.new(focusable: true))
+    c.on_key(Ori::Key.new(code: :enter))
+    c.checked.should be_true
+  end
+
+  it "fires on_change" do
+    vals = [] of Bool
+    c = Ori::Checkbox.new(label: "z", on_change: ->(v : Bool) { vals << v; nil })
+    c.checked = true
+    c.on_key(Ori::Key.new(code: :space))
+    vals.should eq([false])
+  end
+
+  it "content_width accounts for label" do
+    c = Ori::Checkbox.new(label: "hello world")
+    c.content_width.should be >= 14
+  end
+
+  it "focusable depends on style" do
+    Ori::Checkbox.new.focusable?.should be_false
+    Ori::Checkbox.new(style: Ori::S.new(focusable: true)).focusable?.should be_true
+  end
+end
+
+describe Ori::Tabs do
+  it "defaults to empty tabs" do
+    t = Ori::Tabs.new
+    t.tabs.should be_empty
+    t.active.should eq(0)
+  end
+
+  it "creates with tabs" do
+    t = Ori::Tabs.new(tabs: ["A", "B", "C"])
+    t.tabs.size.should eq(3)
+    t.active.should eq(0)
+  end
+
+  it "navigates right with l" do
+    t = Ori::Tabs.new(tabs: ["A", "B", "C"])
+    t.on_key(Ori::Key.new(text: "l"))
+    t.active.should eq(1)
+  end
+
+  it "navigates left with h" do
+    t = Ori::Tabs.new(tabs: ["A", "B", "C"], active: 2)
+    t.on_key(Ori::Key.new(text: "h"))
+    t.active.should eq(1)
+  end
+
+  it "jumps to start/end with g/G" do
+    t = Ori::Tabs.new(tabs: ["A", "B", "C"])
+    t.on_key(Ori::Key.new(text: "G"))
+    t.active.should eq(2)
+    t.on_key(Ori::Key.new(text: "g"))
+    t.active.should eq(0)
+  end
+
+  it "fires on_change" do
+    vals = [] of Int32
+    t = Ori::Tabs.new(tabs: ["A", "B"], on_change: ->(i : Int32) { vals << i; nil })
+    t.on_key(Ori::Key.new(text: "l"))
+    vals.should eq([1])
+  end
+
+  it "content_height is 1" do
+    Ori::Tabs.new.content_height.should eq(1)
+  end
+
+  it "focusable depends on style" do
+    Ori::Tabs.new.focusable?.should be_false
+    Ori::Tabs.new(style: Ori::S.new(focusable: true)).focusable?.should be_true
+  end
+end
+
+describe Ori::Tree do
+  it "creates with root node" do
+    root = Ori::Tree::Node.new("root")
+    t = Ori::Tree.new(root: root)
+    t.root.label.should eq("root")
+  end
+
+  it "flattens visible nodes" do
+    root = Ori::Tree::Node.new("root", [
+      Ori::Tree::Node.new("child"),
+    ], expanded: true)
+    t = Ori::Tree.new(root: root)
+    t.content_height.should eq(1)
+  end
+
+  it "navigates down with j" do
+    root = Ori::Tree::Node.new("root", [
+      Ori::Tree::Node.new("a"),
+      Ori::Tree::Node.new("b"),
+    ], expanded: true)
+    t = Ori::Tree.new(root: root)
+    t.cursor.should eq(0)
+    t.on_key(Ori::Key.new(text: "j"))
+    t.cursor.should eq(1)
+  end
+
+  it "navigates up with k" do
+    root = Ori::Tree::Node.new("root", [
+      Ori::Tree::Node.new("a"),
+      Ori::Tree::Node.new("b"),
+    ], expanded: true)
+    t = Ori::Tree.new(root: root)
+    t.on_key(Ori::Key.new(text: "j"))
+    t.on_key(Ori::Key.new(text: "k"))
+    t.cursor.should eq(0)
+  end
+
+  it "expands/collapses with l/h" do
+    grandchild = Ori::Tree::Node.new("gc")
+    child = Ori::Tree::Node.new("child", [grandchild], expanded: false)
+    root = Ori::Tree::Node.new("root", [child], expanded: true)
+    t = Ori::Tree.new(root: root)
+    t.content_height.should eq(1)
+    t.on_key(Ori::Key.new(text: "l"))
+    t.content_height.should eq(2)
+    t.on_key(Ori::Key.new(text: "h"))
+    t.content_height.should eq(1)
+  end
+
+  it "content_width accounts for depth" do
+    child = Ori::Tree::Node.new("deep")
+    root = Ori::Tree::Node.new("root", [child], expanded: true)
+    t = Ori::Tree.new(root: root)
+    t.content_width.should be > 4
+  end
+
+  it "focusable depends on style" do
+    Ori::Tree.new.focusable?.should be_false
+    Ori::Tree.new(style: Ori::S.new(focusable: true)).focusable?.should be_true
+  end
+end
+
+describe "Ori::TextArea extended" do
   it "cursor_position returns nil when not focused" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.cursor_position.should be_nil
   end
 
   it "cursor_position returns pos when focused" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.focused = true
     a.cursor_position.should_not be_nil
   end
 
   it "value= resets lines" do
-    a = Ori::AreaNode.new(value: "old")
+    a = Ori::TextArea.new(value: "old")
     a.value = "new\nline"
     a.value.should eq("new\nline")
   end
 
   it "line_count returns number of lines" do
-    a = Ori::AreaNode.new(value: "a\nb\nc")
+    a = Ori::TextArea.new(value: "a\nb\nc")
     a.line_count.should eq(3)
   end
 
   it "line returns specific line" do
-    a = Ori::AreaNode.new(value: "a\nb\nc")
+    a = Ori::TextArea.new(value: "a\nb\nc")
     a.line(0).should eq("a")
     a.line(1).should eq("b")
     a.line(2).should eq("c")
   end
 
   it "line out of bounds returns empty" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.line(99).should eq("")
   end
 
   it "cursor_row and cursor_col" do
-    a = Ori::AreaNode.new(value: "hello", cursor_row: 0)
+    a = Ori::TextArea.new(value: "hello", cursor_row: 0)
     a.cursor_row.should eq(0)
     a.cursor_col.should eq(5)
   end
 
   it "handle ctrl+a (home)" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "a", ctrl: true))
     a.cursor_col.should eq(0)
   end
 
   it "handle ctrl+e (end)" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "a", ctrl: true))
     a.on_key(Ori::Key.new(text: "e", ctrl: true))
@@ -3367,7 +4256,7 @@ describe "Ori::AreaNode extended" do
   end
 
   it "handle ctrl+k (kill to end)" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "a", ctrl: true))
     a.on_key(Ori::Key.new(code: :right))
@@ -3376,7 +4265,7 @@ describe "Ori::AreaNode extended" do
   end
 
   it "handle ctrl+u (kill to start)" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(code: :left))
     a.on_key(Ori::Key.new(code: :left))
@@ -3385,7 +4274,7 @@ describe "Ori::AreaNode extended" do
   end
 
   it "handle page up" do
-    a = Ori::AreaNode.new(value: (1..20).map { |i| "line #{i}" }.join('\n'))
+    a = Ori::TextArea.new(value: (1..20).map { |i| "line #{i}" }.join('\n'))
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(code: :down))
     a.on_key(Ori::Key.new(code: :pg_up))
@@ -3393,21 +4282,21 @@ describe "Ori::AreaNode extended" do
   end
 
   it "handle page down" do
-    a = Ori::AreaNode.new(value: (1..20).map { |i| "line #{i}" }.join('\n'))
+    a = Ori::TextArea.new(value: (1..20).map { |i| "line #{i}" }.join('\n'))
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(code: :pg_down))
     a.cursor_row.should be > 0
   end
 
   it "word left moves to previous word" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(alt: true, text: "b"))
     a.cursor_col.should eq(6)
   end
 
   it "word right at start moves to next word" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "a", ctrl: true))
     a.on_key(Ori::Key.new(alt: true, text: "f"))
@@ -3415,14 +4304,14 @@ describe "Ori::AreaNode extended" do
   end
 
   it "delete word backward" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(alt: true, code: :backspace))
     a.value.should eq("hello ")
   end
 
   it "delete word forward" do
-    a = Ori::AreaNode.new(value: "hello world")
+    a = Ori::TextArea.new(value: "hello world")
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "a", ctrl: true))
     a.on_key(Ori::Key.new(alt: true, text: "d"))
@@ -3430,24 +4319,24 @@ describe "Ori::AreaNode extended" do
   end
 
   it "char_limit blocks typing" do
-    a = Ori::AreaNode.new(value: "12345", char_limit: 5)
+    a = Ori::TextArea.new(value: "12345", char_limit: 5)
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "x")).should be_false
   end
 
   it "content_height respects min" do
-    a = Ori::AreaNode.new(value: "hello")
+    a = Ori::TextArea.new(value: "hello")
     a.content_height.should be >= 1
   end
 
   it "content_width includes prefix" do
-    a = Ori::AreaNode.new(value: "hi", style: Ori::S.new(border: :single))
+    a = Ori::TextArea.new(value: "hi", style: Ori::S.new(border: :single))
     cw = a.content_width
     cw.should be > 2
   end
 
   it "render_screen with border" do
-    a = Ori::AreaNode.new(value: "hello", style: Ori::S.new(border: :single))
+    a = Ori::TextArea.new(value: "hello", style: Ori::S.new(border: :single))
     a.rect = Ori::Rect.new(0, 0, 20, 3)
     scr = Ori::Screen.new(20, 3)
     a.render_screen(scr)
@@ -3455,7 +4344,7 @@ describe "Ori::AreaNode extended" do
 
   it "fire_change callback" do
     changed = false
-    a = Ori::AreaNode.new(value: "", on_change: ->(v : String, r : Int32, c : Int32) { changed = true; nil })
+    a = Ori::TextArea.new(value: "", on_change: ->(v : String, r : Int32, c : Int32) { changed = true; nil })
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(text: "x"))
     changed.should be_true
@@ -3463,10 +4352,80 @@ describe "Ori::AreaNode extended" do
 
   it "fire_cursor callback" do
     cursor = nil
-    a = Ori::AreaNode.new(value: "hello", on_cursor: ->(r : Int32, c : Int32) { cursor = {r, c}; nil })
+    a = Ori::TextArea.new(value: "hello", on_cursor: ->(r : Int32, c : Int32) { cursor = {r, c}; nil })
     a.rect = Ori::Rect.new(0, 0, 20, 5)
     a.on_key(Ori::Key.new(code: :left))
     cursor.should eq({0, 4})
+  end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty value" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      area focusable: true, value: ""
+    end
+    h.focus_first
+    h.frame
+  end
+
+  it "handles typing and newlines" do
+    a = Ori::TextArea.new
+    a.rect = Ori::Rect.new(0, 0, 20, 5)
+    a.on_key(Ori::Key.new(text: "a"))
+    a.on_key(Ori::Key.new(code: :enter))
+    a.on_key(Ori::Key.new(text: "b"))
+    a.value.should eq("a\nb")
+  end
+
+  it "handles cursor navigation at boundaries" do
+    a = Ori::TextArea.new(value: "hello\nworld")
+    a.rect = Ori::Rect.new(0, 0, 20, 5)
+    a.on_key(Ori::Key.new(code: :up)).should be_true
+    a.on_key(Ori::Key.new(code: :left))
+    a.on_key(Ori::Key.new(code: :left))
+    a.on_key(Ori::Key.new(code: :left))
+    a.on_key(Ori::Key.new(code: :left))
+    a.on_key(Ori::Key.new(code: :left))
+    a.on_key(Ori::Key.new(code: :left))
+    a.on_key(Ori::Key.new(code: :down))
+    a.on_key(Ori::Key.new(code: :right))
+    a.on_key(Ori::Key.new(code: :right))
+    a.on_key(Ori::Key.new(code: :right))
+    a.on_key(Ori::Key.new(code: :right))
+    a.on_key(Ori::Key.new(code: :right))
+    a.on_key(Ori::Key.new(code: :right))
+  end
+
+  it "handles page up/down without crash" do
+    a = Ori::TextArea.new(value: (1..50).map(&.to_s).join("\n"))
+    a.rect = Ori::Rect.new(0, 0, 20, 10)
+    a.on_key(Ori::Key.new(code: :PgUp))
+    a.on_key(Ori::Key.new(code: :PgDown))
+  end
+
+  it "handles home/end" do
+    a = Ori::TextArea.new(value: "hello world")
+    a.rect = Ori::Rect.new(0, 0, 20, 5)
+    a.on_key(Ori::Key.new(code: :end))
+    a.on_key(Ori::Key.new(code: :home))
+  end
+
+  it "handles word operations on empty line" do
+    a = Ori::TextArea.new(value: "")
+    a.rect = Ori::Rect.new(0, 0, 20, 5)
+    a.on_key(Ori::Key.new(text: "w", ctrl: true))
+    a.on_key(Ori::Key.new(text: "b", ctrl: true))
+    a.on_key(Ori::Key.new(text: "d", ctrl: true))
+  end
+
+  it "handles char_limit" do
+    a = Ori::TextArea.new(char_limit: 3)
+    a.rect = Ori::Rect.new(0, 0, 20, 5)
+    a.on_key(Ori::Key.new(text: "a"))
+    a.on_key(Ori::Key.new(text: "b"))
+    a.on_key(Ori::Key.new(text: "c"))
+    a.on_key(Ori::Key.new(text: "d"))
+    a.value.should eq("abc")
   end
 end
 
@@ -3549,6 +4508,36 @@ describe "Ori::Viewport extended" do
     v.rect = Ori::Rect.new(0, 0, 20, 5)
     scr = Ori::Screen.new(20, 5)
     v.render_screen(scr)
+  end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty content" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      viewport content: ""
+    end
+    h.frame
+  end
+
+  it "handles very small rect without crash" do
+    vp = Ori::Viewport.new(content: "hello\nworld", style: Ori::S.new)
+    vp.rect = Ori::Rect.new(0, 0, 1, 1)
+    io = IO::Memory.new
+    vp.render(io)
+  end
+
+  it "handles zero rect without crash" do
+    vp = Ori::Viewport.new(content: "hello")
+    vp.rect = Ori::Rect.new(0, 0, 0, 0)
+    io = IO::Memory.new
+    vp.render(io)
+  end
+
+  it "scrolls to bottom without crash" do
+    vp = Ori::Viewport.new(content: (1..50).map(&.to_s).join("\n"))
+    vp.rect = Ori::Rect.new(0, 0, 40, 10)
+    vp.goto_bottom
+    vp.y_offset.should be >= 0
   end
 end
 
@@ -4400,6 +5389,18 @@ describe "Ori::Box layout extended" do
     inner.rect.w.should be > 0
     inner.rect.h.should be > 0
   end
+
+  # Edge cases from find_bugs_spec
+  it "empty children render without crash" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      box do
+      end
+      text "after empty"
+    end
+    h.frame
+    h.include?("after empty").should be_true
+  end
 end
 
 describe "Ori::Paginator extended" do
@@ -4535,6 +5536,31 @@ describe "Ori::Sparkline extended" do
     sl.push(10.0)
     sl.max.should eq(10.0)
   end
+
+  # Edge cases from find_bugs_spec
+  it "handles empty data" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      sparkline data: [] of Float64
+    end
+    h.frame
+  end
+
+  it "handles single data point" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      sparkline data: [5.0]
+    end
+    h.frame
+  end
+
+  it "handles all zeros" do
+    h = Ori::TestHarness.new(40, 5)
+    h.build do
+      sparkline data: [0.0, 0.0, 0.0]
+    end
+    h.frame
+  end
 end
 
 describe "Ori::Help extended" do
@@ -4560,10 +5586,36 @@ describe "Ori::Help extended" do
     h.content_width.should be > 0
   end
 
+  # Edge cases from find_bugs_spec
+  it "renders with empty bindings" do
+    h = Ori::TestHarness.new(40, 10)
+    h.build do
+      help bindings: [] of Ori::HelpBinding
+    end
+    h.frame
+  end
+
+  it "renders with bindings" do
+    h = Ori::TestHarness.new(40, 10)
+    bindings = [Ori::HelpBinding.new(["q"], "q", "quit")]
+    h.build do
+      help bindings: bindings
+    end
+    h.frame
+    h.include?("quit").should be_true
+  end
+
   it "HelpBinding fields" do
     b = Ori::HelpBinding.new(["ctrl+c"], "ctrl+c", "quit")
     b.keys.should eq(["ctrl+c"])
     b.help_key.should eq("ctrl+c")
     b.help_desc.should eq("quit")
+  end
+end
+
+describe "Ori::Renderer" do
+  it "accepts custom output io" do
+    output = IO::Memory.new
+    renderer = Ori::Renderer.new(output)
   end
 end

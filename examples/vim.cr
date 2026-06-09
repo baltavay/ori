@@ -113,7 +113,7 @@ class VimEditorApp < Ori::App
     {@cursor_row, @cursor_col}
   end
 
-  def handle_key(key : Ori::Key) : Bool
+  def on_key(key : Ori::Key) : Bool
     case @mode
     when :insert      then handle_insert(key)
     when :normal      then handle_normal(key)

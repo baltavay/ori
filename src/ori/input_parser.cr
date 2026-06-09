@@ -6,6 +6,11 @@ struct Ori::InputParser
   @utf8_buf : Bytes = Bytes.new(4)
   @utf8_len : Int32 = 0
   @utf8_exp : Int32 = 0
+  @pasting : Bool = false
+
+  def pasting? : Bool
+    @pasting
+  end
 
   private enum EventType
     Key
@@ -46,23 +51,28 @@ struct Ori::InputParser
   def parse_full(byte : UInt8) : Result?
     case @state
     in State::Normal
-      case byte
-      when 0x1b then @state = State::Escape; @csi_params = ""; nil
-      when 0x0d, 0x0a, 0x0c then Result.new(key: Ori::Key.new(code: :enter))
-      when 0x7f, 0x08 then Result.new(key: Ori::Key.new(code: :backspace))
-      when 0x09 then Result.new(key: Ori::Key.new(code: :tab))
-      when 0x20 then Result.new(key: Ori::Key.new(code: :space, text: " "))
-      when 0x01..0x1a then Result.new(key: Ori::Key.new(text: (byte + 0x60).chr.to_s, ctrl: true))
-      else
-        if byte >= 0x20 && byte < 0x7f
-          Result.new(key: Ori::Key.new(text: byte.chr.to_s))
-        elsif byte >= 0x80
-          @utf8_buf[0] = byte; @utf8_len = 1
-          @utf8_exp = (byte & 0xE0) == 0xC0 ? 2 : (byte & 0xF0) == 0xE0 ? 3 : (byte & 0xF8) == 0xF0 ? 4 : 0
-          @state = @utf8_exp > 0 ? State::Utf8 : State::Normal
-          nil
-        else nil
+      if @pasting
+        case byte
+        when 0x1b
+          @state = State::Escape; @csi_params = ""; nil
+        when 0x0d, 0x0a, 0x0c
+          Result.new(key: Ori::Key.new(code: :enter))
+        when 0x09
+          Result.new(key: Ori::Key.new(text: "\t"))
+        else
+          if byte >= 0x20 && byte < 0x7f
+            Result.new(key: Ori::Key.new(text: byte.chr.to_s))
+          elsif byte >= 0x80
+            @utf8_buf[0] = byte; @utf8_len = 1
+            @utf8_exp = (byte & 0xE0) == 0xC0 ? 2 : (byte & 0xF0) == 0xE0 ? 3 : (byte & 0xF8) == 0xF0 ? 4 : 0
+            @state = @utf8_exp > 0 ? State::Utf8 : State::Normal
+            nil
+          else
+            nil
+          end
         end
+      else
+        parse_normal(byte)
       end
     in State::Escape
       @state = State::Normal
@@ -84,6 +94,7 @@ struct Ori::InputParser
         when 'H' then mk(:home, params); when 'F' then mk(:end, params)
         when 'Z' then Result.new(key: Ori::Key.new(code: :tab, shift: true))
         when '~' then parse_tilde(params)
+        when 'u' then parse_u(params)
         when 'M' then parse_sgr_mouse(params, :press)
         when 'm' then parse_sgr_mouse(params, :release)
         else nil
@@ -113,6 +124,27 @@ struct Ori::InputParser
     end
   end
 
+  private def parse_normal(byte : UInt8) : Result?
+    case byte
+    when 0x1b then @state = State::Escape; @csi_params = ""; nil
+    when 0x0d, 0x0a, 0x0c then Result.new(key: Ori::Key.new(code: :enter))
+    when 0x7f, 0x08 then Result.new(key: Ori::Key.new(code: :backspace))
+    when 0x09 then Result.new(key: Ori::Key.new(code: :tab))
+    when 0x20 then Result.new(key: Ori::Key.new(code: :space, text: " "))
+    when 0x01..0x1a then Result.new(key: Ori::Key.new(text: (byte + 0x60).chr.to_s, ctrl: true))
+    else
+      if byte >= 0x20 && byte < 0x7f
+        Result.new(key: Ori::Key.new(text: byte.chr.to_s))
+      elsif byte >= 0x80
+        @utf8_buf[0] = byte; @utf8_len = 1
+        @utf8_exp = (byte & 0xE0) == 0xC0 ? 2 : (byte & 0xF0) == 0xE0 ? 3 : (byte & 0xF8) == 0xF0 ? 4 : 0
+        @state = @utf8_exp > 0 ? State::Utf8 : State::Normal
+        nil
+      else nil
+      end
+    end
+  end
+
   private def mk(code : Ori::Key::Code, params : Array(Int32)) : Result
     m = params[1]? || 1
     Result.new(key: Ori::Key.new(code: code, ctrl: m == 5 || m > 6, alt: m == 3 || m == 4 || m > 6, shift: m == 2 || m == 4 || m == 6 || m == 8))
@@ -120,7 +152,28 @@ struct Ori::InputParser
 
   private def parse_tilde(params : Array(Int32)) : Result?
     c = params[0]? || 0
+    m = params[1]? || 1
+    if c == 27
+      charcode = params[2]? || 0
+      shift = m == 2 || m == 4 || m == 6 || m == 8
+      ctrl = m == 5 || m > 6
+      alt = m == 3 || m == 4 || m > 6
+      if charcode == 13 || charcode == 0
+        return Result.new(key: Ori::Key.new(code: :enter, shift: shift, ctrl: ctrl, alt: alt))
+      elsif charcode >= 32 && charcode < 127
+        ch = charcode.chr.to_s
+        return Result.new(key: Ori::Key.new(text: ch, ctrl: ctrl, alt: alt, shift: shift))
+      elsif charcode == 9
+        return Result.new(key: Ori::Key.new(code: :tab, shift: shift, ctrl: ctrl, alt: alt))
+      elsif charcode == 127 || charcode == 8
+        return Result.new(key: Ori::Key.new(code: :backspace, shift: shift, ctrl: ctrl, alt: alt))
+      end
+      return Result.new(key: Ori::Key.new(code: :unknown, ctrl: ctrl, alt: alt, shift: shift))
+    end
+
     code = case c
+      when 200 then @pasting = true; return nil
+      when 201 then @pasting = false; return nil
       when 2 then Ori::Key::Code::Insert; when 3 then Ori::Key::Code::Delete
       when 5 then Ori::Key::Code::PgUp; when 6 then Ori::Key::Code::PgDown
       when 1, 7, 8, 9 then Ori::Key::Code::Home; when 4 then Ori::Key::Code::End
@@ -133,6 +186,32 @@ struct Ori::InputParser
       else Ori::Key::Code::Unknown
       end
     mk(code, params)
+  end
+
+  private def parse_u(params : Array(Int32)) : Result?
+    c = params[0]? || 0
+    m = params[1]? || 1
+    shift = m == 2 || m == 4 || m == 6 || m == 8
+    ctrl = m == 5 || m > 6
+    alt = m == 3 || m == 4 || m > 6
+    case c
+    when 200
+      @pasting = true; nil
+    when 201
+      @pasting = false; nil
+    when 13
+      Result.new(key: Ori::Key.new(code: :enter, shift: shift, ctrl: ctrl, alt: alt))
+    when 9
+      Result.new(key: Ori::Key.new(code: :tab, shift: shift, ctrl: ctrl, alt: alt))
+    when 127, 8
+      Result.new(key: Ori::Key.new(code: :backspace, shift: shift, ctrl: ctrl, alt: alt))
+    else
+      if c >= 32 && c < 127
+        Result.new(key: Ori::Key.new(text: c.chr.to_s, shift: shift, ctrl: ctrl, alt: alt))
+      else
+        Result.new(key: Ori::Key.new(code: :unknown, shift: shift, ctrl: ctrl, alt: alt))
+      end
+    end
   end
 
   private def parse_sgr_mouse(params : Array(Int32), default_action : Symbol) : Result?

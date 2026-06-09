@@ -16,6 +16,16 @@ struct Ori::S
   getter height : Int32?
   getter width_pct : Float64?
   getter height_pct : Float64?
+  getter min_width : Int32?
+  getter max_width : Int32?
+  getter min_height : Int32?
+  getter max_height : Int32?
+  getter spacing : Int32
+  getter margin : Int32
+  getter margin_top : Int32
+  getter margin_right : Int32
+  getter margin_bottom : Int32
+  getter margin_left : Int32
   getter flex : Int32
   getter direction : Symbol
   getter align : Symbol
@@ -40,6 +50,12 @@ struct Ori::S
     @height : Int32? = nil,
     @width_pct : Float64? = nil,
     @height_pct : Float64? = nil,
+    @min_width : Int32? = nil,
+    @max_width : Int32? = nil,
+    @min_height : Int32? = nil,
+    @max_height : Int32? = nil,
+    @spacing : Int32 = 0,
+    margin : Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32) | Nil = nil,
     @flex : Int32 = 0,
     @direction : Symbol = :vertical,
     @align : Symbol = :left,
@@ -79,6 +95,30 @@ struct Ori::S
       @padding_bottom = 0
       @padding_left = 0
     end
+    case margin
+    when Int32
+      @margin = margin
+      @margin_top = margin
+      @margin_right = margin
+      @margin_bottom = margin
+      @margin_left = margin
+    when Tuple(Int32, Int32)
+      v, h = margin
+      @margin = v
+      @margin_top = v
+      @margin_bottom = v
+      @margin_right = h
+      @margin_left = h
+    when Tuple(Int32, Int32, Int32, Int32)
+      @margin_top, @margin_right, @margin_bottom, @margin_left = margin
+      @margin = {@margin_top, @margin_right, @margin_bottom, @margin_left}.max
+    else
+      @margin = 0
+      @margin_top = 0
+      @margin_right = 0
+      @margin_bottom = 0
+      @margin_left = 0
+    end
   end
 
   def self.none : S
@@ -99,6 +139,14 @@ struct Ori::S
 
   def vpadding : Int32
     @padding_top + @padding_bottom
+  end
+
+  def hmargin : Int32
+    @margin_left + @margin_right
+  end
+
+  def vmargin : Int32
+    @margin_top + @margin_bottom
   end
 
   def frame_h : Int32

@@ -10,13 +10,65 @@ abstract class Ori::App
   @saved_term : LibC::Termios?
   @parser : Ori::InputParser = Ori::InputParser.new
   @running : Bool = false
+  protected setter running
   @mouse_enabled : Bool = true
   @fps : Int32 = 60
+  @last_w : Int32 = 0
+  @last_h : Int32 = 0
+  @dirty : Bool = true
+  @pages : Array(Ori::Page) = [] of Ori::Page
 
-  abstract def render : Ori::Box
+  getter renderer : Ori::Renderer?
+
+  def dirty? : Bool
+    @dirty
+  end
+  protected setter dirty
+
+  def current_fps : Int32
+    @renderer.try(&.fps) || 0
+  end
+
+  # Apps using pages: override current_page's render instead.
+  # Simple apps: override this directly.
+  def render : Ori::Box
+    @pages.any? ? current_page.render : box {}
+  end
 
   def self.run : Nil
-    new.start
+    if ARGV.includes?("--json")
+      run_json
+    elsif ARGV.includes?("--headless")
+      run_headless
+    else
+      unless STDIN.tty?
+        STDERR.puts "ori: requires an interactive terminal (use --json or --headless for AI mode)"
+        exit 1
+      end
+      new.start
+    end
+  end
+
+  def self.run_json : Nil
+    harness = Ori::Harness.new(self, width: 80, height: 24)
+    harness.frame
+    puts harness.state_json
+  end
+
+  def self.run_headless : Nil
+    harness = Ori::Harness.new(self, width: 80, height: 24)
+    harness.frame
+    puts harness.state_json
+    STDOUT.flush
+    # Read key bytes from ARGF (stdin or pipe), output state after each
+    while (byte = ARGF.read_byte)
+      ch = byte.chr
+      next if ch.ascii_control? && ch != '\n'
+      k = ch == '\n' ? Ori::Key.new(code: :enter) : Ori::Key.new(text: ch.to_s)
+      harness.step(k)
+      puts harness.state_json
+      STDOUT.flush
+    end
   end
 
   def start : Nil
@@ -30,11 +82,27 @@ abstract class Ori::App
       STDOUT << Ori::Term.enable_mouse
       STDOUT.flush
     end
+    STDOUT << "\e[>4;2m"
+    STDOUT << "\e[?1u"
+    STDOUT << "\e[?2004h"
+    STDOUT.flush
     @running = true
     rebuild
-    @renderer.not_nil!.start_loop(fps_to_interval(@fps)) { {@root.not_nil!, @dialog} }
+    @renderer.not_nil!.start_loop(fps_to_interval(@fps)) do
+      w, h = Ori::Term.window_size
+      if w != @last_w || h != @last_h
+        @last_w = w
+        @last_h = h
+        rebuild
+      end
+      if @dirty
+        @dirty = false
+        {@root.not_nil!, @dialog, true}
+      else
+        {@root.not_nil!, @dialog, false}
+      end
+    end
     on_start
-    Signal::WINCH.trap { rebuild }
     event_loop
   rescue ex : Exception
     STDERR.puts "\nori: unexpected error: #{ex.message}" if ex.message
@@ -48,6 +116,10 @@ abstract class Ori::App
       STDOUT << Ori::Term.disable_mouse
       STDOUT.flush
     end
+    STDOUT << "\e[>4;0m"
+    STDOUT << "\e[?0u"
+    STDOUT << "\e[?2004l"
+    STDOUT.flush
     @renderer.try(&.close)
     if st = @saved_term
       Ori::Term.restore(st)
@@ -71,16 +143,49 @@ abstract class Ori::App
       d.rect = Ori::Rect.new((w - dw) // 2, (h - dh) // 2, dw, dh)
       d.layout
     end
-    @focus ||= Ori::FocusManager.new
-    @focus.not_nil!.update(root)
+    if @pages.any?
+      current_page.focus.update(root)
+      @focus = current_page.focus
+    else
+      @focus ||= Ori::FocusManager.new
+      @focus.not_nil!.update(root)
+    end
+    @dirty = true
   rescue ex : Exception
     STDERR.puts "ori: render error: #{ex.message}" if ex.message
+  end
+
+  # --- Page management ---
+
+  def current_page : Ori::Page
+    @pages.last
+  end
+
+  def push_page(page : Ori::Page) : Nil
+    @pages.push(page)
+    page.on_enter
+    rebuild
+  end
+
+  def pop_page : Nil
+    page = @pages.pop
+    page.on_exit
+    rebuild
+  end
+
+  def pages? : Bool
+    @pages.any?
+  end
+
+  def quit : Nil
+    @running = false
   end
 
   def start_tick(interval : Time::Span = 16.milliseconds, &block : -> Nil) : Nil
     spawn do
       while @running
         block.call
+        @dirty = true
         sleep interval
       end
     end
@@ -90,8 +195,8 @@ abstract class Ori::App
     @dialog = block.call
     d = @dialog.not_nil!
     w, h = Ori::Term.window_size
-    dw = {d.content_width + d.style.hpadding, w - 4}.min
-    dh = {d.content_height + d.style.vpadding, h - 4}.min
+    dw = {d.content_width + d.style.frame_h, w - 4}.min
+    dh = {d.content_height + d.style.frame_v, h - 4}.min
     d.rect = Ori::Rect.new((w - dw) // 2, (h - dh) // 2, dw, dh)
     d.layout
     rebuild
@@ -150,20 +255,53 @@ abstract class Ori::App
     handle_key(key) if key
   end
 
+  def pasting? : Bool
+    @parser.pasting?
+  end
+
   def handle_key(key : Ori::Key) : Bool
     if key.ctrl && key.text == "c"
       @running = false
-    elsif fm = @focus
-      fm.handle_key(key)
-      rebuild unless any_overlay_open?
     end
+    if on_key(key)
+      @dirty = true
+      return true
+    end
+    if fm = @focus
+      fm.handle_key(key)
+      if any_overlay_open?
+        @dirty = true
+      else
+        rebuild
+      end
+    end
+    on_key_post(key)
+  end
+
+  def on_key(key : Ori::Key) : Bool
+    @pages.any? ? current_page.on_key(key) : false
+  end
+
+  def on_key_post(key : Ori::Key) : Bool
     false
+  end
+
+  def bindings : Hash(String, String)
+    if @pages.any?
+      current_page.bindings
+    else
+      {"tab" => "focus next", "shift+tab" => "focus previous", "ctrl+c" => "quit"}
+    end
   end
 
   def handle_mouse(mouse : Ori::Mouse) : Bool
     handled = dispatch_mouse(mouse)
     handled = on_mouse(mouse) unless handled
-    rebuild unless any_overlay_open?
+    if any_overlay_open?
+      @dirty = true
+    else
+      rebuild
+    end
     handled
   end
 
