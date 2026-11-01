@@ -120,11 +120,21 @@ module Ori
 
     private def probe(input : IO) : Backend
       @reply = self.class.query(@output, input)
-      return Backend::Kitty if @reply.includes?("i=31;OK")
-      if md = /\[([0-9;]*)c/.match(@reply)
+      classified = self.class.classify(@reply)
+      return classified unless classified.none?
+      return from_term if @reply.empty?
+      Backend::None
+    end
+
+    # What a terminal's answer says it can do. The device-attributes reply is
+    # `CSI ? 62;4;6 c` — the parameters are behind a `?`, which the first version of
+    # this parser forgot, so sixel was never recognised and only the `$TERM` guess
+    # worked (and it was wrong in foot).
+    def self.classify(reply : String) : Backend
+      return Backend::Kitty if reply.includes?("i=31;OK")
+      if md = /\[\??([0-9;]*)c/.match(reply)
         return Backend::Sixel if md[1].split(';').includes?("4")
       end
-      return from_term if @reply.empty?
       Backend::None
     end
 

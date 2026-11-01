@@ -97,3 +97,21 @@ describe Ori::ImageNode do
     end
   end
 end
+
+describe Ori::Graphics, ".classify" do
+  it "reads sixel out of a device-attributes reply" do
+    Ori::Graphics.classify("\e[?62;4;6;22c").should eq(Ori::Graphics::Backend::Sixel)
+  end
+
+  it "does not mistake other attributes for sixel" do
+    Ori::Graphics.classify("\e[?62;22c").should eq(Ori::Graphics::Backend::None)
+  end
+
+  it "reads the kitty graphics answer" do
+    Ori::Graphics.classify("\e_Gi=31;OK\e\\").should eq(Ori::Graphics::Backend::Kitty)
+  end
+
+  it "ignores a terminal that said nothing" do
+    Ori::Graphics.classify("").should eq(Ori::Graphics::Backend::None)
+  end
+end
