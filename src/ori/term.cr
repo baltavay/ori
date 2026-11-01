@@ -47,6 +47,22 @@ module Ori::Term
     "\e[K"
   end
 
+  def self.reset_attrs : String
+    "\e[0m"
+  end
+
+  # Brackets one frame so the terminal presents it in a single pass instead of
+  # compositing a half-written frame (DECSET 2026, "synchronized updates"; foot
+  # calls the capability `Sync`). A terminal that doesn't know the private mode
+  # ignores it, so no capability check is needed.
+  def self.sync_begin : String
+    "\e[?2026h"
+  end
+
+  def self.sync_end : String
+    "\e[?2026l"
+  end
+
   def self.enable_mouse : String
     "\e[?1000h\e[?1002h\e[?1006h"
   end
@@ -63,9 +79,26 @@ module Ori::Term
   end
 
   def self.window_size : {Int32, Int32}
+    cols, rows, _, _ = metrics
+    {cols, rows}
+  end
+
+  # Columns, rows and the window's pixel size. The pixel fields are what make images
+  # fit exactly: a cell is not a fixed number of pixels, and foot and kitty both
+  # report the real size. Zeros mean the terminal did not say.
+  def self.metrics : {Int32, Int32, Int32, Int32}
     ws = uninitialized LIoctl::Winsize
     ret = LIoctl.ioctl(0, 0x00005413_u64, pointerof(ws))
-    ret != 0 || ws.ws_col == 0 ? {80, 24} : {ws.ws_col.to_i, ws.ws_row.to_i}
+    return {80, 24, 0, 0} if ret != 0 || ws.ws_col == 0
+    {ws.ws_col.to_i, ws.ws_row.to_i, ws.ws_xpixel.to_i, ws.ws_ypixel.to_i}
+  end
+
+  # Cell size in pixels, for the image protocols. Falls back to the 1:2 shape every
+  # monospace font has rather than to zero.
+  def self.cell_size : {Int32, Int32}
+    cols, rows, xpix, ypix = metrics
+    return {8, 16} if xpix <= 0 || ypix <= 0 || cols <= 0 || rows <= 0
+    {(xpix // cols).clamp(4, 64), (ypix // rows).clamp(6, 128)}
   end
 
   def self.enter_raw : LibC::Termios
@@ -114,7 +147,6 @@ module Ori::Term
     return 2 if 0x1FA00 <= cp <= 0x1FA6F
     return 2 if 0x1FA70 <= cp <= 0x1FAFF
     return 2 if 0x1FC00 <= cp <= 0x1FCFF
-    return 2 if 0x2600 <= cp <= 0x27BF
     return 0 if 0x0300 <= cp <= 0x036F
     return 0 if 0xFE00 <= cp <= 0xFE0F
     return 0 if 0x1F900 <= cp <= 0x1F9FF

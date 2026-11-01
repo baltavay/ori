@@ -78,23 +78,23 @@ abstract class Ori::App
     @saved_term = Ori::Term.enter_raw
     @renderer = Ori::Renderer.new
     @renderer.not_nil!.start
+    # The probe reads the terminal's answer from stdin: it has to run after raw mode
+    # is on and before the input parser starts.
+    @renderer.not_nil!.configure_graphics
     if @mouse_enabled
       STDOUT << Ori::Term.enable_mouse
       STDOUT.flush
     end
+    # Modes this app turns on and turns off again in `cleanup`, never a query: a
+    # terminal answers a query on the program's input, and a reply that arrives
+    # after the program exits is read by the shell and shows up as garbage.
     STDOUT << "\e[>4;2m"
-    STDOUT << "\e[?1u"
     STDOUT << "\e[?2004h"
     STDOUT.flush
     @running = true
     rebuild
     @renderer.not_nil!.start_loop(fps_to_interval(@fps)) do
-      w, h = Ori::Term.window_size
-      if w != @last_w || h != @last_h
-        @last_w = w
-        @last_h = h
-        rebuild
-      end
+      rebuild if terminal_resized?
       if @dirty
         @dirty = false
         {@root.not_nil!, @dialog, true}
@@ -117,7 +117,6 @@ abstract class Ori::App
       STDOUT.flush
     end
     STDOUT << "\e[>4;0m"
-    STDOUT << "\e[?0u"
     STDOUT << "\e[?2004l"
     STDOUT.flush
     @renderer.try(&.close)
@@ -131,15 +130,34 @@ abstract class Ori::App
   def on_start : Nil
   end
 
+  # True when the terminal's size differs from the size the current tree was
+  # laid out for, and records the new one. `rebuild` records the size it lays out
+  # for, so the first check after `on_start` reports no change: a rebuild there
+  # would run `render` afresh and throw away what `on_start` configured on the
+  # nodes of the first tree.
+  def terminal_resized? : Bool
+    w, h = Ori::Term.window_size
+    return false if w == @last_w && h == @last_h
+    @last_w = w
+    @last_h = h
+    true
+  end
+
   def rebuild : Nil
     @root = render
     return unless root = @root
     w, h = Ori::Term.window_size
+    # Record the size this tree was laid out for, so the render loop doesn't see
+    # a change on its first iteration and rebuild again. A second rebuild there
+    # ran `render` afresh and threw away whatever `on_start` had just configured
+    # on the nodes of the first tree.
+    @last_w = w
+    @last_h = h
     root.rect = Ori::Rect.new(0, 0, w, h)
     root.layout
     if d = @dialog
-      dw = {d.content_width + d.style.hpadding, w - 4}.min
-      dh = {d.content_height + d.style.vpadding, h - 4}.min
+      dw = {d.content_width + d.style.frame_h, w - 4}.min
+      dh = {d.content_height + d.style.frame_v, h - 4}.min
       d.rect = Ori::Rect.new((w - dw) // 2, (h - dh) // 2, dw, dh)
       d.layout
     end
@@ -185,6 +203,28 @@ abstract class Ori::App
     spawn do
       while @running
         block.call
+        @dirty = true
+        sleep interval
+      end
+    end
+  end
+
+  # Spawns a fiber that calls `block` every `interval` with the wall-clock
+  # seconds that passed since the previous call, so a frame that ran late passes
+  # the time it really took. Feed it to `Ori::Spring::Clock#take` to advance
+  # timed state in fixed steps that don't depend on the frame rate.
+  #
+  # `start_tick` is the same loop without the elapsed time; a block's number of
+  # parameters doesn't take part in overload resolution, so this is a separate
+  # method.
+  def start_tick_with_elapsed(interval : Time::Span = 16.milliseconds, &block : Float64 -> Nil) : Nil
+    spawn do
+      last = Time.instant
+      while @running
+        now = Time.instant
+        elapsed = (now - last).total_seconds
+        last = now
+        block.call(elapsed)
         @dirty = true
         sleep interval
       end
