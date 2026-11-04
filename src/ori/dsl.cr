@@ -1,4 +1,22 @@
 module Ori::DSL
+  # Wrap any callback to discard its return value (return Nil).
+  # Lets users omit `; nil` at end of callback lambdas.
+  def self.wrap(cb : Proc(V)) : Proc(Nil) forall V
+    -> { cb.call; nil }
+  end
+
+  def self.wrap(cb : Proc(T, V)) : Proc(T, Nil) forall T, V
+    ->(x : T) { cb.call(x); nil }
+  end
+
+  def self.wrap(cb : Proc(T, U, V)) : Proc(T, U, Nil) forall T, U, V
+    ->(x : T, y : U) { cb.call(x, y); nil }
+  end
+
+  def self.wrap(cb : Proc(T, U, V, W)) : Proc(T, U, V, Nil) forall T, U, V, W
+    ->(x : T, y : U, z : V) { cb.call(x, y, z); nil }
+  end
+
   struct StyleArgs
     getter fg : String?
     getter bg : String?
@@ -49,7 +67,7 @@ module Ori::DSL
       @focusable : Bool = false,
       @scrollable : Bool = false,
       @bar_style : Symbol = :solid,
-      @gradient_to : String? = nil
+      @gradient_to : String? = nil,
     )
     end
 
@@ -60,21 +78,14 @@ module Ori::DSL
       height_val : Int32? = nil
       width_pct : Float64? = nil
       height_pct : Float64? = nil
-
       case w
-      when String
-        width_pct = w.chomp('%').to_f
-      when Int32
-        width_val = w
+      when String then width_pct = w.chomp('%').to_f
+      when Int32  then width_val = w
       end
-
       case h
-      when String
-        height_pct = h.chomp('%').to_f
-      when Int32
-        height_val = h
+      when String then height_pct = h.chomp('%').to_f
+      when Int32  then height_val = h
       end
-
       Ori::S.new(
         fg: @fg, bg: @bg, bold: @bold, dim: @dim,
         underline: @underline, strikethrough: @strikethrough,
@@ -91,6 +102,7 @@ module Ori::DSL
       )
     end
   end
+
   def self.make_input(**opts) : Ori::InputNode
     bs = opts.fetch(:border, true)
     default_prefix = bs.is_a?(Symbol) ? Ori.border_chars(bs)[:prefix].to_s : "▌"
@@ -116,9 +128,9 @@ module Ori::DSL
       placeholder: (opts[:placeholder]? || "").as(String),
       prefix: (opts[:prefix]? || default_prefix).as(String),
       cursor: opts[:cursor]?.as?(Int32),
-      on_change: opts[:on_change]?.as?(Proc(String, Nil)),
-      on_submit: opts[:on_submit]?.as?(Proc(Nil)),
-      on_cursor: opts[:on_cursor]?.as?(Proc(Int32, Nil)),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
+      on_submit: opts[:on_submit]?.try { |cb| wrap(cb) },
+      on_cursor: opts[:on_cursor]?.try { |cb| wrap(cb) },
       style: style,
     )
   end
@@ -143,8 +155,8 @@ module Ori::DSL
     ).to_s
     Ori::TextArea.new(
       value: (opts[:value]? || "").as(String),
-      on_change: opts[:on_change]?.as?(Proc(String, Int32, Int32, Nil)),
-      on_cursor: opts[:on_cursor]?.as?(Proc(Int32, Int32, Nil)),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
+      on_cursor: opts[:on_cursor]?.try { |cb| wrap(cb) },
       cursor_row: (opts[:cursor_row]? || 0).as(Int32),
       cursor_col: opts[:cursor_col]?.as?(Int32),
       char_limit: (opts[:char_limit]? || 0).as(Int32),
@@ -183,6 +195,10 @@ module Ori::DSL
     Ori::DSL.make_area(**opts)
   end
 
+  def progress_bar(**opts) : Ori::ProgressBar
+    Ori::DSL.make_progress_bar(**opts)
+  end
+
   def self.make_progress_bar(**opts) : Ori::ProgressBar
     Ori::ProgressBar.new(
       value: opts[:value]?.try(&.as(Float64)) || 0.0,
@@ -196,7 +212,7 @@ module Ori::DSL
       content: (opts[:content]? || "").as(String),
       soft_wrap: (opts[:soft_wrap]? || true).as(Bool),
       y_offset: (opts[:y_offset]? || 0).as(Int32),
-      on_scroll: opts[:on_scroll]?.as?(Proc(Int32, Nil)),
+      on_scroll: opts[:on_scroll]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -206,8 +222,8 @@ module Ori::DSL
       headers: opts[:headers]?.try(&.as(Array(String))) || [] of String,
       rows: opts[:rows]?.try(&.as(Array(Array(String)))) || [] of Array(String),
       selected_row: opts[:selected_row]?.try(&.as(Int32)) || 0,
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
-      on_select: opts[:on_select]?.try(&.as(Proc(Int32, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
+      on_select: opts[:on_select]?.try { |cb| wrap(cb) },
       header_fg: opts[:header_fg]?.try(&.as(String)),
       selected_fg: opts[:selected_fg]?.try(&.as(String)),
       selected_bg: opts[:selected_bg]?.try(&.as(String)),
@@ -220,8 +236,8 @@ module Ori::DSL
       items: opts[:items]?.try(&.as(Array(Ori::List::Item))) || [] of Ori::List::Item,
       selected: opts[:selected]?.try(&.as(Int32)) || 0,
       checked: opts[:checked]?.try(&.as(Array(Bool))) || [] of Bool,
-      on_select: opts[:on_select]?.try(&.as(Proc(Int32, Nil))),
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
+      on_select: opts[:on_select]?.try { |cb| wrap(cb) },
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
       selected_fg: opts[:selected_fg]?.try(&.as(String)),
       selected_bg: opts[:selected_bg]?.try(&.as(String)),
       selected_prefix: opts[:selected_prefix]?.try(&.as(String)) || "▌ ",
@@ -239,46 +255,15 @@ module Ori::DSL
     )
   end
 
-  def self.make_list(**opts) : Ori::List
-    Ori::List.new(
-      items: opts[:items]?.try(&.as(Array(Ori::List::Item))) || [] of Ori::List::Item,
-      selected: opts[:selected]?.try(&.as(Int32)) || 0,
-      checked: opts[:checked]?.try(&.as(Array(Bool))) || [] of Bool,
-      on_select: opts[:on_select]?.try(&.as(Proc(Int32, Nil))),
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
-      selected_fg: opts[:selected_fg]?.try(&.as(String)),
-      selected_bg: opts[:selected_bg]?.try(&.as(String)),
-      selected_prefix: opts[:selected_prefix]?.try(&.as(String)) || "▌ ",
-      normal_prefix: opts[:normal_prefix]?.try(&.as(String)) || "  ",
-      truncate: opts[:truncate]?.try(&.as(Int32)) || 0,
-      checkable: opts[:checkable]?.try(&.as(Bool)) || false,
-      style: Ori::DSL.extract_style(**opts),
-    )
-  end
-
-  def self.make_table(**opts) : Ori::Table
-    Ori::Table.new(
-      headers: opts[:headers]?.try(&.as(Array(String))) || [] of String,
-      rows: opts[:rows]?.try(&.as(Array(Array(String)))) || [] of Array(String),
-      selected_row: opts[:selected_row]?.try(&.as(Int32)) || 0,
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
-      on_select: opts[:on_select]?.try(&.as(Proc(Int32, Nil))),
-      header_fg: opts[:header_fg]?.try(&.as(String)),
-      selected_fg: opts[:selected_fg]?.try(&.as(String)),
-      selected_bg: opts[:selected_bg]?.try(&.as(String)),
-      style: Ori::DSL.extract_style(**opts),
-    )
-  end
-
   def self.make_select(**opts) : Ori::Select
     Ori::Select.new(
       options: opts[:options]?.try(&.as(Array(String))) || [] of String,
       selected: opts[:selected]?.try(&.as(Int32)) || 0,
       highlighted: opts[:highlighted]?.try(&.as(Int32)) || -1,
       open: opts[:open]?.try(&.as(Bool)) || false,
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
-      on_toggle: opts[:on_toggle]?.try(&.as(Proc(Bool, Nil))),
-      on_highlight: opts[:on_highlight]?.try(&.as(Proc(Int32, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
+      on_toggle: opts[:on_toggle]?.try { |cb| wrap(cb) },
+      on_highlight: opts[:on_highlight]?.try { |cb| wrap(cb) },
       max_visible: opts[:max_visible]?.try(&.as(Int32)) || 8,
       highlight_fg: opts[:highlight_fg]?.try(&.as(String)),
       highlight_bg: opts[:highlight_bg]?.try(&.as(String)),
@@ -293,8 +278,8 @@ module Ori::DSL
       day: opts[:day]?.try(&.as(Int32)),
       monday_first: opts[:monday_first]?.try(&.as(Bool)) || false,
       open: opts[:open]?.try(&.as(Bool)) || false,
-      on_change: opts[:on_change]?.try(&.as(Proc(Time, Nil))),
-      on_toggle: opts[:on_toggle]?.try(&.as(Proc(Bool, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
+      on_toggle: opts[:on_toggle]?.try { |cb| wrap(cb) },
       header_fg: opts[:header_fg]?.try(&.as(String)),
       selected_fg: opts[:selected_fg]?.try(&.as(String)),
       selected_bg: opts[:selected_bg]?.try(&.as(String)),
@@ -317,8 +302,8 @@ module Ori::DSL
       open: opts[:open]?.try(&.as(Bool)) || false,
       section: opts[:section]?.try(&.as(Ori::DateTimePicker::Section)) || Ori::DateTimePicker::Section::Date,
       tfield: opts[:tfield]?.try(&.as(Ori::DateTimePicker::TField)) || Ori::DateTimePicker::TField::Hour,
-      on_change: opts[:on_change]?.try(&.as(Proc(Time, Nil))),
-      on_toggle: opts[:on_toggle]?.try(&.as(Proc(Bool, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
+      on_toggle: opts[:on_toggle]?.try { |cb| wrap(cb) },
       time_fg: opts[:time_fg]?.try(&.as(String)),
       active_fg: opts[:active_fg]?.try(&.as(String)),
       active_bg: opts[:active_bg]?.try(&.as(String)),
@@ -338,7 +323,7 @@ module Ori::DSL
       current_dir: (opts[:current_dir]? || Dir.current).as(String),
       allowed_types: opts[:allowed_types]?.try(&.as(Array(String))) || [] of String,
       show_hidden: (opts[:show_hidden]? || false).as(Bool),
-      on_select: opts[:on_select]?.as?(Proc(String, Nil)),
+      on_select: opts[:on_select]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -347,7 +332,7 @@ module Ori::DSL
     Ori::MarkdownNode.new(
       content: (opts[:content]? || "").as(String),
       y_offset: (opts[:y_offset]? || 0).as(Int32),
-      on_scroll: opts[:on_scroll]?.as?(Proc(Int32, Nil)),
+      on_scroll: opts[:on_scroll]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -361,11 +346,20 @@ module Ori::DSL
     )
   end
 
+  def self.make_canvas(**opts, &block : Ori::Canvas -> Nil) : Ori::CanvasNode
+    Ori::CanvasNode.new(
+      sub_x: opts[:sub_x]?.try(&.as(Int32)) || 2,
+      sub_y: opts[:sub_y]?.try(&.as(Int32)) || 2,
+      style: Ori::DSL.extract_style(**opts),
+      &block
+    )
+  end
+
   def self.make_tabs(**opts) : Ori::Tabs
     Ori::Tabs.new(
       tabs: opts[:tabs]?.try(&.as(Array(String))) || [] of String,
       active: opts[:active]?.try(&.as(Int32)) || 0,
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -374,7 +368,7 @@ module Ori::DSL
     Ori::Button.new(
       label: (opts[:label]? || "Button").as(String),
       variant: (opts[:variant]? || :default).as(Symbol),
-      on_press: opts[:on_press]?.try(&.as(Proc(Nil))),
+      on_press: opts[:on_press]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -383,7 +377,7 @@ module Ori::DSL
     Ori::Checkbox.new(
       label: (opts[:label]? || "").as(String),
       checked: (opts[:checked]? || false).as(Bool),
-      on_change: opts[:on_change]?.try(&.as(Proc(Bool, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -391,7 +385,7 @@ module Ori::DSL
   def self.make_tree(**opts) : Ori::Tree
     Ori::Tree.new(
       root: opts[:root]?.try(&.as(Ori::Tree::Node)),
-      on_select: opts[:on_select]?.try(&.as(Proc(String, Nil))),
+      on_select: opts[:on_select]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -402,7 +396,7 @@ module Ori::DSL
       max: (opts[:max]? || 100.0).as(Float64),
       value: (opts[:value]? || 0.0).as(Float64),
       step: (opts[:step]? || 1.0).as(Float64),
-      on_change: opts[:on_change]?.try(&.as(Proc(Float64, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -411,7 +405,7 @@ module Ori::DSL
     Ori::Radio.new(
       label: (opts[:label]? || "").as(String),
       selected: (opts[:selected]? || false).as(Bool),
-      on_change: opts[:on_change]?.try(&.as(Proc(Bool, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -420,7 +414,7 @@ module Ori::DSL
     Ori::RadioGroup.new(
       labels: opts[:labels]?.try(&.as(Array(String))) || [] of String,
       selected: (opts[:selected]? || 0).as(Int32),
-      on_change: opts[:on_change]?.try(&.as(Proc(Int32, Nil))),
+      on_change: opts[:on_change]?.try { |cb| wrap(cb) },
       style: Ori::DSL.extract_style(**opts),
     )
   end
@@ -441,33 +435,20 @@ module Ori::DSL
     )
   end
 
-  def progress_bar(**opts) : Ori::ProgressBar
-    Ori::DSL.make_progress_bar(**opts)
-  end
-
   def self.extract_style(**opts) : Ori::S
     StyleArgs.new(
-      fg: opts[:fg]?.as?(String),
-      bg: opts[:bg]?.as?(String),
-      bold: (opts[:bold]? || false).as(Bool),
-      dim: (opts[:dim]? || false).as(Bool),
-      underline: (opts[:underline]? || false).as(Bool),
-      strikethrough: (opts[:strikethrough]? || false).as(Bool),
-      border: opts[:border]?,
-      border_fg: opts[:border_fg]?.as?(String),
+      fg: opts[:fg]?.as?(String), bg: opts[:bg]?.as?(String),
+      bold: (opts[:bold]? || false).as(Bool), dim: (opts[:dim]? || false).as(Bool),
+      underline: (opts[:underline]? || false).as(Bool), strikethrough: (opts[:strikethrough]? || false).as(Bool),
+      border: opts[:border]?, border_fg: opts[:border_fg]?.as?(String),
       padding: opts[:padding]?.as?(Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32)),
-      width: opts[:width]?.as?(Int32 | String),
-      height: opts[:height]?.as?(Int32 | String),
-      min_width: opts[:min_width]?.as?(Int32),
-      max_width: opts[:max_width]?.as?(Int32),
-      min_height: opts[:min_height]?.as?(Int32),
-      max_height: opts[:max_height]?.as?(Int32),
+      width: opts[:width]?.as?(Int32 | String), height: opts[:height]?.as?(Int32 | String),
+      min_width: opts[:min_width]?.as?(Int32), max_width: opts[:max_width]?.as?(Int32),
+      min_height: opts[:min_height]?.as?(Int32), max_height: opts[:max_height]?.as?(Int32),
       spacing: (opts[:spacing]? || 0).as(Int32),
       margin: opts[:margin]?.as?(Int32 | Tuple(Int32, Int32) | Tuple(Int32, Int32, Int32, Int32)),
-      flex: (opts[:flex]? || 0).as(Int32),
-      direction: (opts[:direction]? || :vertical).as(Symbol),
-      align: (opts[:align]? || :left).as(Symbol),
-      focusable: (opts[:focusable]? || false).as(Bool),
+      flex: (opts[:flex]? || 0).as(Int32), direction: (opts[:direction]? || :vertical).as(Symbol),
+      align: (opts[:align]? || :left).as(Symbol), focusable: (opts[:focusable]? || false).as(Bool),
       scrollable: (opts[:scrollable]? || false).as(Bool),
       bar_style: (opts[:bar_style]? || :solid).as(Symbol),
       gradient_to: opts[:gradient_to]?.as?(String),
@@ -479,8 +460,7 @@ module Ori::DSL
   end
 
   def table(**opts) : Ori::Table
-    t = Ori::DSL.make_table(**opts)
-    t
+    Ori::DSL.make_table(**opts)
   end
 
   def list(**opts) : Ori::List
@@ -513,6 +493,10 @@ module Ori::DSL
 
   def sparkline(**opts) : Ori::Sparkline
     Ori::DSL.make_sparkline(**opts)
+  end
+
+  def canvas(**opts, &block : Ori::Canvas -> Nil) : Ori::CanvasNode
+    Ori::DSL.make_canvas(**opts, &block)
   end
 
   def tabs(**opts) : Ori::Tabs

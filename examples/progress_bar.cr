@@ -5,48 +5,75 @@ MAUVE = "#cba6f7"; GREEN = "#a6e3a1"; BLUE = "#89b4fa"
 RED = "#f38ba8"; TEAL = "#94e2d5"; PINK = "#f5c2e7"; YELLOW = "#f9e2af"
 
 class ProgressBarApp < Ori::App
-  @bars = [] of Ori::ProgressBar
-  @labels = [] of Ori::TextNode
   @pos = 0
 
+  # The bars and labels are created once and `attach`ed each frame. Creating them
+  # in `render` would hand back new objects on every rebuild, so anything set on
+  # them once (the listing bar's max) would be lost to the next rebuild.
+  @bar_solid : Ori::ProgressBar
+  @bar_blocks : Ori::ProgressBar
+  @bar_gradient : Ori::ProgressBar
+  @bar_download : Ori::ProgressBar
+  @bar_listing : Ori::ProgressBar
+  @bar_indeterminate : Ori::ProgressBar
+  @label_solid : Ori::TextNode
+  @label_blocks : Ori::TextNode
+  @label_gradient : Ori::TextNode
+  @label_download : Ori::TextNode
+  @label_listing : Ori::TextNode
+  @label_indeterminate : Ori::TextNode
+
+  def initialize
+    @bar_solid = Ori::ProgressBar.new(style: Ori::S.new(fg: GREEN, bg: BG))
+    @bar_blocks = Ori::ProgressBar.new(style: Ori::S.new(bar_style: :blocks, fg: BLUE, bg: BG))
+    @bar_gradient = Ori::ProgressBar.new(style: Ori::S.new(bar_style: :gradient, fg: BLUE, bg: BG, gradient_to: PINK))
+    @bar_download = Ori::ProgressBar.new(style: Ori::S.new(fg: TEAL, bg: BG))
+    @bar_listing = Ori::ProgressBar.new(style: Ori::S.new(fg: YELLOW, bg: BG))
+    @bar_indeterminate = Ori::ProgressBar.new(style: Ori::S.new(fg: RED, bg: BG, gradient_to: YELLOW))
+    @label_solid = Ori::TextNode.new("")
+    @label_blocks = Ori::TextNode.new("")
+    @label_gradient = Ori::TextNode.new("")
+    @label_download = Ori::TextNode.new("")
+    @label_listing = Ori::TextNode.new("")
+    @label_indeterminate = Ori::TextNode.new("")
+  end
+
   def render : Ori::Box
-    @bars.clear
-    @labels.clear
     box bg: BG, padding: {1, 2} do
       text "ProgressBar Demo", fg: MAUVE, bold: true
       box padding: {1, 0} do
         text "Solid:", fg: DM
-        @bars << progress_bar(fg: GREEN, bg: BG)
-        @labels << text ""
+        attach @bar_solid
+        attach @label_solid
 
         text "Blocks:", fg: DM
-        @bars << progress_bar(bar_style: :blocks, fg: BLUE, bg: BG)
-        @labels << text ""
+        attach @bar_blocks
+        attach @label_blocks
 
         text "Gradient:", fg: DM
-        @bars << progress_bar(bar_style: :gradient, fg: BLUE, bg: BG, gradient_to: PINK)
-        @labels << text ""
+        attach @bar_gradient
+        attach @label_gradient
 
         text "Download (known total):", fg: DM
-        @bars << progress_bar(fg: TEAL, bg: BG)
-        @labels << text ""
+        attach @bar_download
+        attach @label_download
 
         text "Processing (list):", fg: DM
-        @bars << progress_bar(fg: YELLOW, bg: BG)
-        @labels << text ""
+        attach @bar_listing
+        attach @label_listing
 
         text "Indeterminate:", fg: DM
-        @bars << progress_bar(fg: RED, bg: BG, gradient_to: YELLOW)
-        @labels << text ""
+        attach @bar_indeterminate
+        attach @label_indeterminate
       end
       text "q: quit", fg: DM
     end
   end
 
   def on_start : Nil
-    @bars[4].max = 1000_000_000
+    @bar_listing.max = 1000_000_000
     spawn do
-      (1..@bars[4].max.to_i).each do
+      (1..@bar_listing.max.to_i).each do
         @pos = @pos + 1
         Fiber.yield if @pos % 10_000 == 0
       end
@@ -54,8 +81,8 @@ class ProgressBarApp < Ori::App
 
     spawn do
       while(@running)
-        @bars[4].value = @pos 
-        @labels[4].content = "#{@pos}"
+        @bar_listing.value = @pos
+        @label_listing.content = "#{@pos}"
         sleep 16.milliseconds
       end
     end
@@ -79,12 +106,12 @@ class ProgressBarApp < Ori::App
       @bounce_val = 0.0
       @bounce_dir = 1
     end
-    @bars[0].value = @bounce_val
-    @bars[1].value = @bounce_val
-    @bars[2].value = @bounce_val
-    @labels[0].content = "Solid #{@bounce_val.to_i}%"
-    @labels[1].content = "Blocks #{@bounce_val.to_i}%"
-    @labels[2].content = "Gradient #{@bounce_val.to_i}%"
+    @bar_solid.value = @bounce_val
+    @bar_blocks.value = @bounce_val
+    @bar_gradient.value = @bounce_val
+    @label_solid.content = "Solid #{@bounce_val.to_i}%"
+    @label_blocks.content = "Blocks #{@bounce_val.to_i}%"
+    @label_gradient.content = "Gradient #{@bounce_val.to_i}%"
   end
 
   @dl_total = 0.0
@@ -100,23 +127,19 @@ class ProgressBarApp < Ori::App
     if @dl_downloaded < @dl_total
       @dl_downloaded = {@dl_downloaded + rand(1.0..8.0), @dl_total}.min
     end
-    @bars[3].max = @dl_total
-    @bars[3].value = @dl_downloaded
+    @bar_download.max = @dl_total
+    @bar_download.value = @dl_downloaded
     mb = (@dl_downloaded / @dl_total * 100).to_i
-    @labels[3].content = "#{@dl_downloaded.to_i}/#{@dl_total.to_i} MB (#{mb}%)"
+    @label_download.content = "#{@dl_downloaded.to_i}/#{@dl_total.to_i} MB (#{mb}%)"
   end
-
-  @proc_items = 0
-  @proc_total = 500
-  @proc_started = false
 
   @indeterminate_t = 0.0
 
   def indeterminate_demo
     @indeterminate_t += 0.05
     v = (Math.sin(@indeterminate_t) * 50 + 50).clamp(0.0, 100.0)
-    @bars[5].value = v
-    @labels[5].content = "#{v.to_i}%"
+    @bar_indeterminate.value = v
+    @label_indeterminate.content = "#{v.to_i}%"
   end
 
   def on_key(key : Ori::Key) : Bool

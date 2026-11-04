@@ -23,8 +23,8 @@ class EditorApp < Ori::App
         border: true,
         cursor_row: @cursor_row,
         cursor_col: @cursor_col,
-        on_change: ->(v : String, row : Int32, col : Int32) { @text = v; @cursor_row = row; @cursor_col = col; nil },
-        on_cursor: ->(row : Int32, col : Int32) { @cursor_row = row; @cursor_col = col; nil },
+        on_change: ->(v : String, row : Int32, col : Int32) { @text = v; @cursor_row = row; @cursor_col = col },
+        on_cursor: ->(row : Int32, col : Int32) { @cursor_row = row; @cursor_col = col },
         show_line_numbers: true,
       )
     end

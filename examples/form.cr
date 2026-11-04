@@ -22,21 +22,21 @@ class FormPage < Ori::Page
           text "  Name", bold: true, fg: YL
           input value: @name, cursor: @name_cursor, placeholder: "John Doe",
             focusable: true, border: :single, fg: FG, border_fg: DM, flex: 1,
-            on_change: ->(v : String) { @name = v; nil },
-            on_cursor: ->(c : Int32) { @name_cursor = c; nil }
+            on_change: ->(v : String) { @name = v },
+            on_cursor: ->(c : Int32) { @name_cursor = c }
         end
         box flex: 1 do
           text "  Color", bold: true, fg: YL
           dropdown options: COLORS, selected: @color_idx, open: @color_open,
             focusable: true, flex: 1, highlight_bg: AC, highlight_fg: BG,
-            on_change: ->(idx : Int32) { @color_idx = idx; nil },
-            on_toggle: ->(open : Bool) { @color_open = open; nil }
+            on_change: ->(idx : Int32) { @color_idx = idx },
+            on_toggle: ->(open : Bool) { @color_open = open }
         end
       end
       text ""; text "  Bio", bold: true, fg: YL
       area value: @bio, cursor_row: @bio_row, cursor_col: @bio_col,
         focusable: true, border: :single, fg: FG, border_fg: DM, flex: 1,
-        on_change: ->(v : String, r : Int32, c : Int32) { @bio = v; @bio_row = r; @bio_col = c; nil }
+        on_change: ->(v : String, r : Int32, c : Int32) { @bio = v; @bio_row = r; @bio_col = c }
       text ""
       box direction: :horizontal do
         button label: "Submit", variant: :primary, focusable: true,

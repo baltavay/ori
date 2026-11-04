@@ -63,7 +63,7 @@ class Ori::DateTimePicker < Ori::Node
     style : Ori::S = Ori::S.none
   )
     super(style)
-    now = Time.utc
+    now = Time.local
     @year = year || now.year
     @month = month || now.month
     @cursor_day = day || now.day
@@ -158,7 +158,7 @@ class Ori::DateTimePicker < Ori::Node
     when key.text == "J"
       @cal_year += 1; cal_clamp; true
     when key.text == "t"
-      now = Time.utc
+      now = Time.local
       @cal_year = now.year; @cal_month = now.month; @cal_day = now.day; true
     when key.code.enter?
       confirm; true

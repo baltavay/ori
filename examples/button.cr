@@ -11,11 +11,11 @@ class ButtonApp < Ori::App
       text "Button Demo", fg: MAUVE, bold: true
       box padding: {1, 0} do
         button label: "Click me", variant: :primary, focusable: true,
-          on_press: -> { @clicks += 1; @last_variant = :primary; nil }
+          on_press: -> { @clicks += 1; @last_variant = :primary }
         button label: "Save", variant: :success, focusable: true,
-          on_press: -> { @clicks += 1; @last_variant = :success; nil }
+          on_press: -> { @clicks += 1; @last_variant = :success }
         button label: "Delete", variant: :danger, focusable: true,
-          on_press: -> { @clicks += 1; @last_variant = :danger; nil }
+          on_press: -> { @clicks += 1; @last_variant = :danger }
       end
       text "Clicked #{@clicks} times (last: #{@last_variant})", fg: GREEN
       text "tab: navigate  enter/space: click  ctrl+c: quit", fg: DM

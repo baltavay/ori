@@ -61,7 +61,7 @@ module Ori::CalendarHelper
                 cal_year : Int32, cal_month : Int32, cal_day : Int32,
                 monday_first : Bool, dfg : String?, bg : String?,
                 sfg : String?, sbg : String?, tfg : String?, tbg : String?, omfg : String?) : Nil
-    now = Time.utc
+    now = Time.local
     sw = start_wday(cal_year, cal_month, monday_first)
     cdim = days_in_month(cal_year, cal_month)
     pdim = prev_month_dim(cal_year, cal_month)

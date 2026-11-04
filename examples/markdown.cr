@@ -15,7 +15,7 @@ class MarkdownApp < Ori::App
         focusable: true,
         flex: 1,
         y_offset: @y_offset,
-        on_scroll: ->(y : Int32) { @y_offset = y; nil },
+        on_scroll: ->(y : Int32) { @y_offset = y },
       )
     end
   end
@@ -91,7 +91,7 @@ class MarkdownApp < Ori::App
       box height: "100%", direction: :vertical do
         text "Hello World", bold: true, fg: "#cba6f7"
         input placeholder: "Type here...", focusable: true,
-          on_change: ->(v : String) { @name = v; nil }
+          on_change: ->(v : String) { @name = v }
       end
     end
   end

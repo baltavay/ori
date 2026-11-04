@@ -260,6 +260,12 @@ class Ori::Box < Ori::Node
     b
   end
 
+  def canvas(**opts, &block : Ori::Canvas -> Nil) : Ori::CanvasNode
+    c = Ori::DSL.make_canvas(**opts, &block)
+    add(c)
+    c
+  end
+
   def input(**opts) : Ori::InputNode
     i = Ori::DSL.make_input(**opts)
     add(i)

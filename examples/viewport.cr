@@ -15,7 +15,7 @@ class ViewerApp < Ori::App
         focusable: true,
         flex: 1,
         y_offset: @y_offset,
-        on_scroll: ->(y : Int32) { @y_offset = y; nil },
+        on_scroll: ->(y : Int32) { @y_offset = y },
       )
     end
   end
@@ -100,7 +100,7 @@ class ViewerApp < Ori::App
     box padding: 2, direction: :vertical do
       text "Hello!", bold: true, fg: "#cba6f7"
       input value: @name, placeholder: "Name...", focusable: true,
-        on_change: ->(v : String) { @name = v; nil }
+        on_change: ->(v : String) { @name = v }
     end
 
   This creates a vertical box with padding, containing a bold heading

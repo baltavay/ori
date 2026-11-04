@@ -133,7 +133,7 @@ class Ori::MarkdownNode < Ori::Node
           if cell.char == '\n'
             next
           end
-          screen.put(r.x + cx, ry, cell.char, fg: cell.fg, bg: cell.bg || bg, bold: cell.bold)
+          screen.put_cell(r.x + cx, ry, cell, fallback_bg: bg)
           cx += 1
         end
         while cx < r.w

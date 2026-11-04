@@ -43,7 +43,7 @@ class DatePickerApp < Ori::App
             @status = "Selected: #{t}"
             nil
           },
-          on_toggle: ->(open : Bool) { @dp_open = open; nil },
+          on_toggle: ->(open : Bool) { @dp_open = open },
         )
       end
       unless @status.empty?

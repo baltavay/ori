@@ -33,9 +33,9 @@ class SelectApp < Ori::App
           highlight_fg: BG,
           border_fg: COLOR_HEX[COLORS[@color_idx]]?,
           fg: COLOR_HEX[COLORS[@color_idx]]?,
-          on_change: ->(idx : Int32) { @color_idx = idx; nil },
-          on_toggle: ->(open : Bool) { @sel_open = open; nil },
-          on_highlight: ->(idx : Int32) { @sel_hl = idx; nil },
+          on_change: ->(idx : Int32) { @color_idx = idx },
+          on_toggle: ->(open : Bool) { @sel_open = open },
+          on_highlight: ->(idx : Int32) { @sel_hl = idx },
         )
       end
 
@@ -49,9 +49,9 @@ class SelectApp < Ori::App
           focusable: true,
           highlight_bg: AC,
           highlight_fg: BG,
-          on_change: ->(idx : Int32) { @size_idx = idx; nil },
-          on_toggle: ->(open : Bool) { @size_open = open; nil },
-          on_highlight: ->(idx : Int32) { @size_hl = idx; nil },
+          on_change: ->(idx : Int32) { @size_idx = idx },
+          on_toggle: ->(open : Bool) { @size_open = open },
+          on_highlight: ->(idx : Int32) { @size_hl = idx },
         )
       end
 

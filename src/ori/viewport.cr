@@ -1,6 +1,7 @@
 class Ori::Viewport < Ori::Node
   @content : String
   @lines : Array(String)
+  @content_width : Int32 = 0
   @y_offset : Int32
   @x_offset : Int32
   @soft_wrap : Bool
@@ -23,6 +24,15 @@ class Ori::Viewport < Ori::Node
 
   getter content : String
   getter y_offset : Int32
+
+  # Soft wrap depends on the width the layout gives this node, so a new width
+  # re-wraps the content. Without this the lines stay wrapped to whatever width
+  # the node had when its content was set, and a resize shows stale wrapping.
+  def rect=(rect : Ori::Rect) : Nil
+    rewrap = rect.w != @rect.w
+    @rect = rect
+    rebuild_lines if rewrap && @soft_wrap
+  end
 
   def content=(s : String) : Nil
     @content = s
@@ -71,7 +81,7 @@ class Ori::Viewport < Ori::Node
   end
 
   def content_width : Int32
-    @lines.map(&.size).max
+    @content_width
   end
 
   def focusable? : Bool
@@ -188,21 +198,32 @@ class Ori::Viewport < Ori::Node
     else
       @lines = @content.split('\n')
     end
+    widest = 0
+    @lines.each do |line|
+      widest = line.size if line.size > widest
+    end
+    @content_width = widest
     @y_offset = @y_offset.clamp(0, max_y_offset)
   end
 
+  # Wraps one line into pieces of at most `width` characters, one allocation per
+  # piece. Building each piece by `current += ch` copied the whole piece for
+  # every character, which is quadratic in the line's length.
   private def wrap_line(line : String, width : Int32) : Array(String)
+    width = 1 if width < 1
     result = [] of String
-    current = ""
+    buf = IO::Memory.new(width * 4)
+    count = 0
     line.each_char do |ch|
-      if current.size >= width
-        result << current
-        current = ch.to_s
-      else
-        current += ch
+      if count == width
+        result << buf.to_s
+        buf.clear
+        count = 0
       end
+      buf << ch
+      count += 1
     end
-    result << current unless current.empty?
+    result << buf.to_s unless count == 0
     result.empty? ? [""] of String : result
   end
 end

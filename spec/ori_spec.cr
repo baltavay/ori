@@ -327,6 +327,36 @@ describe Ori::ProgressBar do
   end
 end
 
+describe Ori::Renderer do
+  it "waits for the frame in flight before it returns" do
+    renderer = Ori::Renderer.new(IO::Memory.new)
+    renderer.start_loop(1.millisecond) do
+      sleep 50.milliseconds # a frame that takes a while, e.g. a heavy tree
+      {Ori::Box.new, nil, true}
+    end
+    sleep 10.milliseconds # the loop is inside the frame now
+    renderer.stop
+    renderer.stopped?.should be_true
+  end
+
+  it "restores the screen and its attributes when it closes" do
+    io = IO::Memory.new
+    Ori::Renderer.new(io).close
+    io.to_s.should eq(
+      Ori::Term.sync_end + Ori::Term.reset_attrs + Ori::Term.cursor_default +
+      Ori::Term.show_cursor + Ori::Term.exit_alt
+    )
+  end
+end
+
+describe "Ori::App terminal size" do
+  it "reports no change right after rebuild laid a tree out" do
+    app = TickTestApp.new
+    app.rebuild
+    app.terminal_resized?.should be_false
+  end
+end
+
 describe "Ori::App start_tick" do
   it "spawns fiber that runs block and marks dirty" do
     app = TickTestApp.new
@@ -797,7 +827,7 @@ end
 describe Ori::DatePicker do
   it "defaults to today" do
     dp = Ori::DatePicker.new(style: Ori::S.new(focusable: true))
-    now = Time.utc
+    now = Time.local
     dp.year.should eq(now.year)
     dp.month.should eq(now.month)
     dp.cursor_day.should eq(now.day)
@@ -879,7 +909,7 @@ describe Ori::DatePicker do
     dp.on_key(Ori::Key.new(code: :enter))
     dp.on_key(Ori::Key.new(text: "t"))
     dp.on_key(Ori::Key.new(code: :enter))
-    now = Time.utc
+    now = Time.local
     dp.year.should eq(now.year)
     dp.month.should eq(now.month)
   end
@@ -1441,6 +1471,54 @@ describe Ori::Viewport do
     scrolled.should eq(3)
     vp.view_up(1)
     scrolled.should eq(2)
+  end
+
+  it "wraps content to the width the layout gives it" do
+    h = Ori::TestHarness.new(20, 6)
+    vp = Ori::Viewport.new(content: "abcdefghijklmnopqrstuvwxyz")
+    root = Ori::Box.new([vp] of Ori::Node)
+    root.rect = Ori::Rect.new(0, 0, 20, 6)
+    h.root = root
+    h.frame
+    vp.total_lines.should eq(2)
+    h.line(0).should eq("abcdefghijklmnopqrst")
+    h.text_at(0, 1, 6).should eq("uvwxyz")
+  end
+
+  it "re-wraps when the width the layout gives it changes" do
+    h = Ori::TestHarness.new(20, 6)
+    vp = Ori::Viewport.new(content: "abcdefghijklmnopqrstuvwxyz")
+    root = Ori::Box.new([vp] of Ori::Node)
+    root.rect = Ori::Rect.new(0, 0, 20, 6)
+    h.root = root
+    h.frame
+    vp.total_lines.should eq(2)
+    root.rect = Ori::Rect.new(0, 0, 10, 6)
+    h.frame
+    vp.total_lines.should eq(3)
+    h.text_at(0, 0, 10).should eq("abcdefghij")
+    h.text_at(0, 1, 10).should eq("klmnopqrst")
+    h.text_at(0, 2, 6).should eq("uvwxyz")
+  end
+
+  it "counts characters, not bytes, when wrapping" do
+    vp = Ori::Viewport.new(content: "абвгдеёжзий")
+    vp.rect = Ori::Rect.new(0, 0, 4, 5)
+    vp.total_lines.should eq(3)
+  end
+
+  it "keeps an empty line as one line" do
+    vp = Ori::Viewport.new(content: "a\n\nb")
+    vp.rect = Ori::Rect.new(0, 0, 10, 5)
+    vp.total_lines.should eq(3)
+  end
+
+  it "reports the widest wrapped line" do
+    vp = Ori::Viewport.new(content: "abcd\nxy")
+    vp.rect = Ori::Rect.new(0, 0, 40, 5)
+    vp.content_width.should eq(4)
+    vp.rect = Ori::Rect.new(0, 0, 2, 5)
+    vp.content_width.should eq(2)
   end
 end
 
@@ -2121,6 +2199,17 @@ describe "Ori::Screen extended" do
     io.to_s.should contain("H")
   end
 
+  it "flush brackets a frame with synchronized updates" do
+    s = Ori::Screen.new(5, 1)
+    io = IO::Memory.new
+    s.put(0, 0, 'H')
+    s.flush(io)
+    out = io.to_s
+    out.starts_with?("\e[?2026h").should be_true
+    out.ends_with?("\e[?2026l").should be_true
+    out.should contain('H')
+  end
+
   it "flush skips unchanged cells" do
     s = Ori::Screen.new(5, 1)
     io1 = IO::Memory.new
@@ -2130,6 +2219,30 @@ describe "Ori::Screen extended" do
     io2 = IO::Memory.new
     s.flush(io2)
     io2.to_s.size.should eq(0)
+  end
+
+  it "flush run-length encodes same-style runs" do
+    s = Ori::Screen.new(10, 1)
+    io = IO::Memory.new
+    s.put(0, 0, 'A', fg: "#ff0000", bold: true)
+    s.put(1, 0, 'B', fg: "#ff0000", bold: true)
+    s.put(2, 0, 'C', fg: "#00ff00")
+    s.flush(io)
+    out = io.to_s
+    out.scan("\e[1;1H").size.should eq(1)
+    out.should contain("AB")
+    out.should contain("C")
+  end
+
+  it "flush omits wide-char filler cells" do
+    s = Ori::Screen.new(10, 1)
+    io = IO::Memory.new
+    s.put(0, 0, 'あ', fg: "#ffffff")
+    s.put(1, 0, '\0', fg: "#ffffff")
+    s.flush(io)
+    out = io.to_s
+    out.should contain('あ')
+    out.should_not contain('\0')
   end
 
   it "nested clips restrict writes" do
@@ -2149,10 +2262,22 @@ describe "Ori::Screen extended" do
     s.put(0, 0, 'X', fg: "#ff0000", bg: "#00ff00", bold: true, dim: true)
     cell = s.back[0]
     cell.char.should eq('X')
-    cell.fg.should eq("#ff0000")
-    cell.bg.should eq("#00ff00")
+    cell.fg.should eq(Ori::Screen.color("#ff0000"))
+    cell.bg.should eq(Ori::Screen.color("#00ff00"))
     cell.bold.should be_true
     cell.dim.should be_true
+  end
+
+  it "writes one cell's colours as SGR" do
+    io = IO::Memory.new
+    Ori::Screen::Cell.new('x', fg: "#0a141e", bg: "#28323c", bold: true, dim: true).write_sgr(io)
+    io.to_s.should eq("\e[0m\e[48;2;40;50;60m\e[38;2;10;20;30m\e[1m\e[2m")
+  end
+
+  it "treats a colour it can't parse as none" do
+    io = IO::Memory.new
+    Ori::Screen::Cell.new('x', fg: "#zzzzzz").write_sgr(io)
+    io.to_s.should eq("\e[0m")
   end
 
   # Edge cases from find_bugs_spec

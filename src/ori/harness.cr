@@ -61,7 +61,9 @@ class Ori::Harness
 
   def step(key : Ori::Key)
     before = state
-    @harness.key(key)
+    unless @app.on_key(key)
+      @harness.key(key)
+    end
     frame
     after = state
     {"before" => before, "after" => after}

@@ -7,7 +7,7 @@ class PickerApp < Ori::App
   def initialize
     @selected = nil
     @picker = Ori::FilePicker.new(
-      on_select: ->(path : String) { @selected = path; nil },
+      on_select: ->(path : String) { @selected = path },
       style: Ori::S.new(flex: 1),
     )
   end

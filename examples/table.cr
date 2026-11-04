@@ -40,8 +40,8 @@ class TableApp < Ori::App
         header_fg: AC,
         selected_bg: AC,
         selected_fg: BG,
-        on_change: ->(row : Int32) { @selected = row; nil },
-        on_select: ->(row : Int32) { @status = "Selected: #{@data[row]?.try(&.[1]) || "none"}"; nil },
+        on_change: ->(row : Int32) { @selected = row },
+        on_select: ->(row : Int32) { @status = "Selected: #{@data[row]?.try(&.[1]) || "none"}" },
       )
       unless @status.empty?
         box padding: {0, 2} do

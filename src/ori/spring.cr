@@ -1,4 +1,51 @@
 module Ori::Spring
+  # A frame runs whole steps of a fixed size, and its work has a maximum with a
+  # named fallback: past MAX_STEPS the spring snaps onto its target instead of
+  # catching up. 300 steps of 4 ms is 1.2 s, so only a real stall reaches it.
+  STEP_SECONDS = 0.004
+  MAX_STEPS    = 300
+
+  # The whole steps one frame should run, the step size, and whether the spring
+  # should give up on the backlog and snap onto its target.
+  record Schedule, steps : Int32, snap : Bool, step : Float64
+
+  # Turns wall-clock time into whole `step` slices and keeps the remainder for
+  # the next frame, so the state is the same however frames are divided.
+  class Clock
+    getter backlog : Float64
+
+    def initialize(@step : Float64 = STEP_SECONDS, @max_steps : Int32 = MAX_STEPS)
+      @backlog = 0.0
+    end
+
+    def take(elapsed : Float64) : Schedule
+      @backlog += elapsed if elapsed > 0
+      steps = (@backlog / @step).to_i
+      if steps <= 0
+        Schedule.new(0, false, @step)
+      elsif steps > @max_steps
+        @backlog = 0.0
+        Schedule.new(@max_steps, true, @step)
+      else
+        @backlog -= steps * @step
+        Schedule.new(steps, false, @step)
+      end
+    end
+
+    def reset : Nil
+      @backlog = 0.0
+    end
+  end
+
+  # Runs a schedule's steps on one spring, or snaps it onto its target.
+  def self.apply(schedule : Schedule, pos : Float64, vel : Float64, target : Float64, frequency : Float64, damping : Float64) : {Float64, Float64}
+    return {target, 0.0} if schedule.snap
+    schedule.steps.times do
+      pos, vel = update(pos, vel, target, frequency, damping, schedule.step)
+    end
+    {pos, vel}
+  end
+
   # Compute spring position/velocity for one time step.
   # Uses damped harmonic oscillator (Ryan Juckett algorithm).
   #  - pos, vel: current state

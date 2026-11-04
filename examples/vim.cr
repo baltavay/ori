@@ -114,16 +114,17 @@ class VimEditorApp < Ori::App
   end
 
   def on_key(key : Ori::Key) : Bool
-    case @mode
+    handled = case @mode
     when :insert      then handle_insert(key)
     when :normal      then handle_normal(key)
     when :visual      then handle_visual(key)
     when :visual_line then handle_visual_line(key)
     when :command     then handle_command(key)
     when :search      then handle_search(key)
+    else false
     end
     rebuild
-    false
+    handled
   end
 
   # ── History ──

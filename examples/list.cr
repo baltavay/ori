@@ -15,7 +15,7 @@ class ListApp < Ori::App
       Ori::List::Item.new("Grape"), Ori::List::Item.new("Honeydew"),
     ]
     @list = Ori::List.new(items: @items, selected: @selected,
-      on_select: ->(i : Int32) { @selected = i; nil },
+      on_select: ->(i : Int32) { @selected = i },
       style: Ori::S.new(focusable: true))
   end
 

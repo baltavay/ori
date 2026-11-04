@@ -6,6 +6,7 @@ BLUE = "#89b4fa"; PINK = "#f5c2e7"
 class SpringApp < Ori::App
   @pos_h = 50.0; @vel_h = 0.0; @target_h = 50.0
   @pos_v = 50.0; @vel_v = 0.0; @target_v = 50.0
+  @clock = Ori::Spring::Clock.new
   @bar_h : Ori::ProgressBar; @bar_v : Ori::ProgressBar
   @h_label : Ori::TextNode; @v_label : Ori::TextNode
 
@@ -16,9 +17,10 @@ class SpringApp < Ori::App
   end
 
   def on_start : Nil
-    start_tick(16.milliseconds) do
-      @pos_h, @vel_h = Ori::Spring.update(@pos_h, @vel_h, @target_h, 5.0, 0.5, 0.016)
-      @pos_v, @vel_v = Ori::Spring.update(@pos_v, @vel_v, @target_v, 3.0, 0.15, 0.016)
+    start_tick_with_elapsed(16.milliseconds) do |dt|
+      schedule = @clock.take(dt)
+      @pos_h, @vel_h = Ori::Spring.apply(schedule, @pos_h, @vel_h, @target_h, 5.0, 0.5)
+      @pos_v, @vel_v = Ori::Spring.apply(schedule, @pos_v, @vel_v, @target_v, 3.0, 0.15)
       @bar_h.value = @pos_h.clamp(0.0, 100.0); @bar_v.value = @pos_v.clamp(0.0, 100.0)
       @h_label.content = "Spring 1 (damping 0.5): #{@pos_h.round(1)}%  vel: #{@vel_h.round(2)}"
       @v_label.content = "Spring 2 (damping 0.15): #{@pos_v.round(1)}%  vel: #{@vel_v.round(2)}"

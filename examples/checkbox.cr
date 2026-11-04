@@ -10,11 +10,11 @@ class CheckboxApp < Ori::App
       text "Checkbox Demo", fg: MAUVE, bold: true
       box padding: {1, 0} do
         checkbox label: "Enable notifications", focusable: true,
-          checked: @checks[0], on_change: ->(v : Bool) { @checks[0] = v; nil }
+          checked: @checks[0], on_change: ->(v : Bool) { @checks[0] = v }
         checkbox label: "Dark mode", focusable: true,
-          checked: @checks[1], on_change: ->(v : Bool) { @checks[1] = v; nil }
+          checked: @checks[1], on_change: ->(v : Bool) { @checks[1] = v }
         checkbox label: "Auto-save", focusable: true,
-          checked: @checks[2], on_change: ->(v : Bool) { @checks[2] = v; nil }
+          checked: @checks[2], on_change: ->(v : Bool) { @checks[2] = v }
       end
       status = @checks.each_with_index.map { |c,i| "#{i}:#{c}" }.join(", ")
       text "Status: #{status}", fg: GREEN
