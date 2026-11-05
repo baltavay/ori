@@ -168,7 +168,9 @@ any flipping, drop the edge entirely: sample a continuous field at each cell's
 four quadrant centres and paint the means of the two halves —
 `examples/bounce.cr` writes its cells straight into `Screen` this way (no
 `Canvas`), so a fifth of a cell of movement changes hundreds of cells by a few
-RGB levels.
+RGB levels. `examples/sunrise.cr` paints a whole landscape that way on a canvas:
+a keyframed sky gradient, a soft sun and moon, a cast shadow and stars, with the
+tree's geometry rasterized once and only its lighting recomputed per frame.
 
 ### Viewport
 
@@ -386,6 +388,7 @@ crystal run examples/spring.cr
 crystal run examples/splash.cr
 crystal run examples/bounce.cr
 crystal run examples/plasma.cr
+crystal run examples/sunrise.cr
 crystal run examples/canvas_form.cr
 
 # text UI
