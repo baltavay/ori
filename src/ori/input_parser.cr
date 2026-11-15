@@ -80,7 +80,14 @@ struct Ori::InputParser
       when 0x5b then @state = State::Csi; @csi_params = ""; nil
       when 0x4f then @state = State::Ss3; nil
       when 0x1b then Result.new(key: Ori::Key.new(code: :escape))
-      else Result.new(key: Ori::Key.new(code: :escape))
+      else
+        # ESC followed by a printable is Alt+key, the xterm convention. A lone ESC
+        # arrives through flush_escape after the timeout.
+        if byte >= 0x20 && byte < 0x7f
+          Result.new(key: Ori::Key.new(text: byte.chr.to_s, alt: true))
+        else
+          Result.new(key: Ori::Key.new(code: :escape))
+        end
       end
     in State::Csi
       if byte >= 0x30 && byte <= 0x3f

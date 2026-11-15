@@ -88,6 +88,10 @@ abstract class Ori::App
     # Modes this app turns on and turns off again in `cleanup`, never a query: a
     # terminal answers a query on the program's input, and a reply that arrives
     # after the program exits is read by the shell and shows up as garbage.
+    # Kitty keyboard protocol, DISAMBIGUATE only: ctrl+h stops being the same byte
+    # as backspace and ctrl+1 stops being a plain 1. Terminals without support
+    # ignore it, so this is safe everywhere.
+    STDOUT << "\e[>1u"
     STDOUT << "\e[>4;2m"
     STDOUT << "\e[?2004h"
     STDOUT.flush
@@ -116,6 +120,7 @@ abstract class Ori::App
       STDOUT << Ori::Term.disable_mouse
       STDOUT.flush
     end
+    STDOUT << "\e[<u"
     STDOUT << "\e[>4;0m"
     STDOUT << "\e[?2004l"
     STDOUT.flush
