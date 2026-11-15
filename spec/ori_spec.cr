@@ -68,10 +68,11 @@ describe Ori::Rect do
     r = Ori::Rect.new(0, 0, 10, 10)
     s = Ori::S.new(border: true, padding: 1)
     inner = r.inner(s)
-    inner.x.should eq(1)
-    inner.y.should eq(1)
-    inner.w.should eq(8)
-    inner.h.should eq(8)
+    # the frame is outside the content area: 1 border + 1 padding on each side
+    inner.x.should eq(2)
+    inner.y.should eq(2)
+    inner.w.should eq(6)
+    inner.h.should eq(6)
   end
 end
 
@@ -5105,20 +5106,20 @@ describe "Ori::Rect extended further" do
     r = Ori::Rect.new(0, 0, 20, 10)
     s = Ori::S.new(border: true)
     inner = r.inner(s)
-    inner.x.should eq(0)
-    inner.y.should eq(0)
-    inner.w.should eq(20)
-    inner.h.should eq(10)
+    inner.x.should eq(1)
+    inner.y.should eq(1)
+    inner.w.should eq(18)
+    inner.h.should eq(8)
   end
 
   it "inner with border and padding" do
     r = Ori::Rect.new(0, 0, 30, 20)
     s = Ori::S.new(border: true, padding: 2)
     inner = r.inner(s)
-    inner.x.should eq(2)
-    inner.y.should eq(2)
-    inner.w.should eq(26)
-    inner.h.should eq(16)
+    inner.x.should eq(3)
+    inner.y.should eq(3)
+    inner.w.should eq(24)
+    inner.h.should eq(14)
   end
 
   it "contains all edges" do
@@ -5484,9 +5485,9 @@ describe "Ori::Box layout extended" do
     box = Ori::Box.new([c] of Ori::Node, style: Ori::S.new(border: :single))
     box.rect = Ori::Rect.new(0, 0, 20, 10)
     box.layout
-    c.rect.x.should eq(0)
-    c.rect.y.should eq(0)
-    c.rect.w.should eq(20)
+    c.rect.x.should eq(1)
+    c.rect.y.should eq(1)
+    c.rect.w.should eq(18)
     c.rect.h.should eq(4)
   end
 
