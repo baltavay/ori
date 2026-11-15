@@ -77,6 +77,23 @@ describe Ori::Rect do
 end
 
 describe Ori::InputParser do
+  it "decodes escape from the kitty and xterm key protocols" do
+    # With DISAMBIGUATE on, Escape is CSI 27 u, not a bare ESC byte; a parser
+    # that missed it left the app blind to the key.
+    ["\e[27u", "\e[27;1;27~", "\e[27;2u"].each do |seq|
+      parser = Ori::InputParser.new
+      key = nil.as(Ori::Key?)
+      seq.each_byte do |b|
+        if r = parser.parse_full(b)
+          key = r.key if r.key
+        end
+      end
+      k = key
+      k.should_not be_nil
+      k.not_nil!.code.should eq(Ori::Key::Code::Escape)
+    end
+  end
+
   it "parses printable" do
     Ori::InputParser.new.parse('a'.ord.to_u8).not_nil!.text.should eq("a")
   end

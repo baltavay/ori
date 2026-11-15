@@ -165,7 +165,9 @@ struct Ori::InputParser
       shift = m == 2 || m == 4 || m == 6 || m == 8
       ctrl = m == 5 || m > 6
       alt = m == 3 || m == 4 || m > 6
-      if charcode == 13 || charcode == 0
+      if charcode == 27
+        return Result.new(key: Ori::Key.new(code: :escape, shift: shift, ctrl: ctrl, alt: alt))
+      elsif charcode == 13 || charcode == 0
         return Result.new(key: Ori::Key.new(code: :enter, shift: shift, ctrl: ctrl, alt: alt))
       elsif charcode >= 32 && charcode < 127
         ch = charcode.chr.to_s
@@ -206,6 +208,13 @@ struct Ori::InputParser
       @pasting = true; nil
     when 201
       @pasting = false; nil
+    when 27
+      # With the kitty protocol's disambiguate flag Escape is sent as `CSI 27 u`,
+      # not as a bare ESC byte. Without this case it became `unknown` and the app
+      # could not see the key at all.
+      Result.new(key: Ori::Key.new(code: :escape, shift: shift, ctrl: ctrl, alt: alt))
+    when 32
+      Result.new(key: Ori::Key.new(code: :space, text: " ", shift: shift, ctrl: ctrl, alt: alt))
     when 13
       Result.new(key: Ori::Key.new(code: :enter, shift: shift, ctrl: ctrl, alt: alt))
     when 9
