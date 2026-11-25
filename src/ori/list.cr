@@ -73,6 +73,27 @@ class Ori::List < Ori::Node
     @cursor = idx.clamp(0, @items.size - 1)
   end
 
+  # The viewport's first visible row. A front-end that rebuilds its tree should
+  # carry this across updates; otherwise every redraw jumps back to the top.
+  def scroll_offset : Int32
+    @scroll_offset
+  end
+
+  def scroll_to(offset : Int32) : Nil
+    max = {@items.size - vis_count, 0}.max
+    @scroll_offset = offset.clamp(0, max)
+  end
+
+  # Replace the rows but keep the viewport. `items=` is for a new list and
+  # deliberately resets the scroll; an immediate-mode app rebuilding every frame
+  # needs this instead, or held j/k never leaves the first page.
+  def update(items : Array(Item), selected : Int32) : Nil
+    @items = items
+    @checked = Array(Bool).new(items.size, false)
+    @cursor = selected.clamp(0, {@items.size - 1, 0}.max)
+    adjust_scroll
+  end
+
   def content_height : Int32
     {@items.size, 1}.max
   end
